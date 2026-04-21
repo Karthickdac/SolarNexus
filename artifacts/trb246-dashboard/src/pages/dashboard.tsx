@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListModbusReadings, getListModbusReadingsQueryKey } from "@workspace/api-client-react";
+import type { ModbusReadingRawPayload } from "@workspace/api-client-react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { CSVLink } from "react-csv";
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
@@ -28,9 +30,75 @@ const CHART_COLORS = {
 
 const DATA_SOURCES: string[] = ["App DB", "Teltonika TRB246"];
 
+type ChartPayloadEntry = {
+  color?: string;
+  name?: string;
+  value?: string | number | null;
+};
+
+type TooltipProps = {
+  active?: boolean;
+  payload?: ChartPayloadEntry[];
+  label?: string | number;
+};
+
+type LegendProps = {
+  payload?: Array<{
+    color?: string;
+    value?: string | number;
+  }>;
+};
+
+type ModbusPayloadValues = {
+  temperatureC?: unknown;
+  voltageV?: unknown;
+  currentA?: unknown;
+  powerW?: unknown;
+  energyKwh?: unknown;
+  rssiDbm?: unknown;
+  signalQuality?: unknown;
+};
+
+type ParsedReading = {
+  id: number;
+  deviceId: string;
+  receivedAt: string;
+  timeLabel: string;
+  dateLabel: string;
+  temperatureC: number | null;
+  voltageV: number | null;
+  currentA: number | null;
+  powerW: number | null;
+  energyKwh: number | null;
+  rssiDbm: number | null;
+  signalQuality: number | null;
+  status: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getPayloadValues(rawPayload: ModbusReadingRawPayload): ModbusPayloadValues {
+  return isRecord(rawPayload.values) ? rawPayload.values : {};
+}
+
+function getPayloadRegisters(rawPayload: ModbusReadingRawPayload): Record<string, unknown> {
+  return isRecord(rawPayload.registers) ? rawPayload.registers : {};
+}
+
 // --- Tooltips & Legends ---
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: TooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div
@@ -47,7 +115,7 @@ function CustomTooltip({ active, payload, label }: any) {
       <div style={{ marginBottom: "6px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" }}>
         {label}
       </div>
-      {payload.map((entry: any, index: number) => (
+      {payload.map((entry, index) => (
         <div key={index} style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
           {entry.color && entry.color !== "#ffffff" && (
             <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "2px", backgroundColor: entry.color, flexShrink: 0 }} />
@@ -62,11 +130,11 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-function CustomLegend({ payload }: any) {
+function CustomLegend({ payload }: LegendProps) {
   if (!payload || payload.length === 0) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px 16px", fontSize: "13px", paddingTop: "10px" }}>
-      {payload.map((entry: any, index: number) => (
+      {payload.map((entry, index) => (
         <div key={index} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "2px", backgroundColor: entry.color, flexShrink: 0 }} />
           <span className="text-muted-foreground">{entry.value}</span>
@@ -96,6 +164,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (loading) {
       setIsSpinning(true);
+      return undefined;
     } else {
       const t = setTimeout(() => setIsSpinning(false), 600);
       return () => clearTimeout(t);
@@ -104,7 +173,7 @@ export default function Dashboard() {
 
   // --- Auto Refresh Logic ---
   useEffect(() => {
-    if (autoRefreshInterval <= 0) return;
+    if (autoRefreshInterval <= 0) return undefined;
     const interval = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: getListModbusReadingsQueryKey(queryParams) });
     }, autoRefreshInterval);
@@ -114,10 +183,13 @@ export default function Dashboard() {
   // --- Data Parsing & Transformation ---
   const rawReadings = data?.readings || [];
   
-  const parsedData = useMemo(() => {
+  const parsedData = useMemo<ParsedReading[]>(() => {
     return [...rawReadings].reverse().map(r => {
-      const values = (r.rawPayload as any)?.values || {};
-      const registers = (r.rawPayload as any)?.registers || {};
+      const values = getPayloadValues(r.rawPayload);
+      const registers = getPayloadRegisters(r.rawPayload);
+      const registerTemperature = numericValue(registers["30001"]);
+      const registerVoltage = numericValue(registers["30002"]);
+      const registerCurrent = numericValue(registers["30003"]);
       
       return {
         id: r.id,
@@ -125,13 +197,13 @@ export default function Dashboard() {
         receivedAt: r.receivedAt,
         timeLabel: format(new Date(r.receivedAt), "HH:mm:ss"),
         dateLabel: format(new Date(r.receivedAt), "MMM dd, HH:mm"),
-        temperatureC: typeof values.temperatureC === 'number' ? values.temperatureC : null,
-        voltageV: typeof values.voltageV === 'number' ? values.voltageV : null,
-        currentA: typeof values.currentA === 'number' ? values.currentA : null,
-        powerW: typeof values.powerW === 'number' ? values.powerW : null,
-        energyKwh: typeof values.energyKwh === 'number' ? values.energyKwh : null,
-        rssiDbm: typeof values.rssiDbm === 'number' ? values.rssiDbm : null,
-        signalQuality: typeof values.signalQuality === 'number' ? values.signalQuality : null,
+        temperatureC: numericValue(values.temperatureC) ?? (registerTemperature === null ? null : registerTemperature / 10),
+        voltageV: numericValue(values.voltageV) ?? (registerVoltage === null ? null : registerVoltage / 100),
+        currentA: numericValue(values.currentA) ?? (registerCurrent === null ? null : registerCurrent / 1000),
+        powerW: numericValue(values.powerW) ?? numericValue(registers["30004"]),
+        energyKwh: numericValue(values.energyKwh),
+        rssiDbm: numericValue(values.rssiDbm) ?? numericValue(registers["30100"]),
+        signalQuality: numericValue(values.signalQuality) ?? numericValue(registers["30101"]),
         status: r.parsingStatus,
       };
     });
@@ -165,14 +237,14 @@ export default function Dashboard() {
   const tickColor = isDark ? "#98999C" : "#71717a";
 
   // --- Table Columns ---
-  const columns = [
-    { accessorKey: "id", header: "ID", cell: ({ row }: any) => <span className="font-mono text-xs">{row.original.id}</span> },
-    { accessorKey: "deviceId", header: "Device", cell: ({ row }: any) => <span className="font-medium text-sm">{row.original.deviceId}</span> },
-    { accessorKey: "receivedAt", header: "Timestamp", cell: ({ row }: any) => <span className="text-sm">{format(new Date(row.original.receivedAt), "MMM dd, yyyy HH:mm:ss")}</span> },
-    { accessorKey: "temperatureC", header: "Temp (°C)", cell: ({ row }: any) => <span className="text-sm">{row.original.temperatureC?.toFixed(1) || "--"}</span> },
-    { accessorKey: "voltageV", header: "Voltage (V)", cell: ({ row }: any) => <span className="text-sm">{row.original.voltageV?.toFixed(1) || "--"}</span> },
-    { accessorKey: "powerW", header: "Power (W)", cell: ({ row }: any) => <span className="text-sm font-semibold">{row.original.powerW?.toFixed(1) || "--"}</span> },
-    { accessorKey: "signalQuality", header: "Signal (%)", cell: ({ row }: any) => <span className="text-sm">{row.original.signalQuality || "--"}</span> },
+  const columns: ColumnDef<ParsedReading>[] = [
+    { accessorKey: "id", header: "ID", cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span> },
+    { accessorKey: "deviceId", header: "Device", cell: ({ row }) => <span className="font-medium text-sm">{row.original.deviceId}</span> },
+    { accessorKey: "receivedAt", header: "Timestamp", cell: ({ row }) => <span className="text-sm">{format(new Date(row.original.receivedAt), "MMM dd, yyyy HH:mm:ss")}</span> },
+    { accessorKey: "temperatureC", header: "Temp (°C)", cell: ({ row }) => <span className="text-sm">{row.original.temperatureC?.toFixed(1) || "--"}</span> },
+    { accessorKey: "voltageV", header: "Voltage (V)", cell: ({ row }) => <span className="text-sm">{row.original.voltageV?.toFixed(1) || "--"}</span> },
+    { accessorKey: "powerW", header: "Power (W)", cell: ({ row }) => <span className="text-sm font-semibold">{row.original.powerW?.toFixed(1) || "--"}</span> },
+    { accessorKey: "signalQuality", header: "Signal (%)", cell: ({ row }) => <span className="text-sm">{row.original.signalQuality || "--"}</span> },
   ];
 
   return (

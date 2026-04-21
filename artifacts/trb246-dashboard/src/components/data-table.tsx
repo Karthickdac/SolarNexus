@@ -60,7 +60,7 @@ export function DataTable<T>({ data, columns, searchPlaceholder = "Search..." }:
                   >
                     <div className="flex items-center gap-2">
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      {{ asc: " 🔼", desc: " 🔽" }[header.column.getIsSorted() as string] ?? null}
+                      {{ asc: "↑", desc: "↓" }[header.column.getIsSorted() as string] ?? null}
                     </div>
                   </TableHead>
                 ))}
