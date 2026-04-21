@@ -46,10 +46,8 @@ describe("POST /api/modbus/readings", () => {
       }),
     });
 
-    assert.ok(
-      response.status === 401 || response.status === 503,
-      `Expected 401 or 503, received ${response.status}`,
-    );
+    const expectedStatus = ingestToken ? 401 : 503;
+    assert.equal(response.status, expectedStatus);
 
     const body = (await response.json()) as { error?: string };
     assert.match(body.error ?? "", /token|Unauthorized/i);
