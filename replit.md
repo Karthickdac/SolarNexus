@@ -48,6 +48,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - The dashboard reads from `GET /api/modbus/readings` through generated React Query hooks.
 - Seed test readings use `source = 'sample-trb246'` and include two devices: `TRB246-GATEWAY-01` and `TRB246-GATEWAY-02`.
 - The dashboard parses `rawPayload.values`, `rawPayload.registers`, and stored decoded values defensively for temperature, voltage, current, power, energy, RSSI, signal quality, relay, and uptime metrics.
+- `artifacts/trb246-dashboard/src/config/site-blueprint.ts` drives the enterprise plant simulation. Replace this file per client site to map zones, inverters, strings, positions, gateway IDs, MPPT labels, expected output, and live status thresholds.
+- The plant console now includes sidebar navigation, overview/simulation/analytics/report/config views, and a visual blueprint simulation where strings/inverters render green for healthy telemetry, amber for review states, and red for stale, missing, invalid, weak, or low-output telemetry.
 
 ## Configuration
 
