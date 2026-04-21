@@ -535,8 +535,8 @@ export default function Dashboard() {
                 <Zap className="h-5 w-5" />
               </div>
               <div>
-                <div className="font-bold tracking-tight">PlantOS</div>
-                <div className="text-xs text-muted-foreground">TRB246 Operations</div>
+                <div className="font-bold tracking-tight">SolarNexus</div>
+                <div className="text-xs text-muted-foreground">by Automystics</div>
               </div>
             </div>
           </div>
@@ -629,7 +629,7 @@ export default function Dashboard() {
                 <Badge variant="outline">App DB</Badge>
                 <Badge variant="outline">Teltonika TRB246</Badge>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Enterprise Power Plant Console</h1>
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">SolarNexus by Automystics</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Blueprint-driven simulation, live string status tracking, and Modbus telemetry reporting.
               </p>
