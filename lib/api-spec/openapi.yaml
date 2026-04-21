@@ -52,7 +52,17 @@ paths:
       operationId: createModbusReading
       tags: [modbus]
       summary: Receive Modbus reader data
-      description: Accepts HTTP JSON payloads from a Teltonika TRB246 or other Modbus reader.
+      description: Accepts HTTP JSON payloads from a Teltonika TRB246 or other Modbus reader. Requests must include the shared device token in the x-device-key header or as a Bearer token.
+      security:
+        - DeviceKeyAuth: []
+        - DeviceBearerAuth: []
+      parameters:
+        - name: x-device-key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Shared device token configured in the API server environment.
       requestBody:
         required: true
         content:
@@ -72,7 +82,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid device token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Device ingest token is not configured on the server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    DeviceKeyAuth:
+      type: apiKey
+      in: header
+      name: x-device-key
+      description: Shared device token stored in the API server environment as MODBUS_INGEST_TOKEN.
+    DeviceBearerAuth:
+      type: http
+      scheme: bearer
+      description: Alternative bearer-token format using the same shared device token.
   schemas:
     HealthStatus:
       type: object

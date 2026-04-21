@@ -36,7 +36,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ## API Endpoints
 
 - `GET /api/healthz` — API health check.
-- `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, decoded values, and received timestamp. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
+- `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, decoded values, and received timestamp. Requires the shared device token from `MODBUS_INGEST_TOKEN` via `x-device-key` or `Authorization: Bearer <token>`. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
 - `GET /api/modbus/readings?limit=25` — returns recent stored Modbus reader payloads plus decoded register values for verification and dashboard visualization.
 
 ## Database Tables
@@ -54,6 +54,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ## Configuration
 
 - `TRB246_REGISTER_MAP_JSON` — optional JSON object for overriding or adding register definitions without code changes. Each key is a register address and each value includes `name`, `unit`, `kind` (`number` or `boolean`), optional `scale`, and optional `labels`.
+- `MODBUS_INGEST_TOKEN` — required shared secret for the TRB246/device ingest endpoint. Store it as an environment secret, never in source code.
 
 ## Rollout Notes
 
