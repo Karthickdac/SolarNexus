@@ -34,4 +34,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 - `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads and intake metadata for later decoding and dashboard visualization.
 
+## Rollout Notes
+
+- Apply the database schema in each target environment before sending live TRB246 data to `POST /api/modbus/readings`, otherwise inserts will fail if the `modbus_readings` table is missing.
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
