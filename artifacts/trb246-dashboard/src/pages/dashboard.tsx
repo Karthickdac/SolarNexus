@@ -47,7 +47,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KPICard } from "../components/kpi-card";
 import { SplitRefreshButton } from "../components/split-refresh-button";
 import { DataTable } from "../components/data-table";
-import { siteBlueprint as defaultSiteBlueprint, type BlueprintString, type SiteBlueprint } from "../config/site-blueprint";
+import type { BlueprintString, SiteBlueprint } from "../config/site-blueprint";
 import { BlueprintEditor } from "../components/blueprint-editor";
 import { useSites } from "../config/sites-store";
 import { useUsers } from "../config/users-store";
@@ -426,7 +426,7 @@ export default function Dashboard() {
     if (currentSite) setBlueprintForSite(currentSite.id, next);
   };
   const resetBlueprint = () => {
-    if (currentSite) setBlueprintForSite(currentSite.id, defaultSiteBlueprint);
+    if (currentSite) setBlueprintForSite(currentSite.id, { ...siteBlueprint });
   };
 
   useEffect(() => {
