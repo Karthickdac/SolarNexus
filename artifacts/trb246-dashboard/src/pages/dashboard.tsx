@@ -26,6 +26,7 @@ import {
   Printer,
   Settings,
   Sun,
+  Users as UsersIcon,
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -47,8 +48,11 @@ import { KPICard } from "../components/kpi-card";
 import { SplitRefreshButton } from "../components/split-refresh-button";
 import { DataTable } from "../components/data-table";
 import type { BlueprintString, SiteBlueprint } from "../config/site-blueprint";
-import { useBlueprint } from "../config/blueprint-store";
 import { BlueprintEditor } from "../components/blueprint-editor";
+import { useSites } from "../config/sites-store";
+import { useUsers } from "../config/users-store";
+import { SitesManager } from "../components/sites-manager";
+import { UsersManager } from "../components/users-manager";
 
 const CHART_COLORS = {
   amber: "#ff9900",
@@ -402,8 +406,28 @@ export default function Dashboard() {
   const queryParams = { limit: 100 };
   const { data, isLoading, isFetching, dataUpdatedAt } = useListModbusReadings(queryParams);
   const loading = isLoading || isFetching;
-  const { blueprint, setBlueprint, resetBlueprint } = useBlueprint();
-  const siteBlueprint = blueprint;
+
+  const { users, currentUser, currentUserId, setCurrentUserId, addUser, updateUser, deleteUser } = useUsers();
+  const allowedSiteIds = currentUser?.role === "super-admin" ? ("all" as const) : (currentUser?.siteIds ?? []);
+  const { sites, visibleSites, currentSite, currentSiteId, setCurrentSiteId, addSite, updateSite, deleteSite, setBlueprintForSite } =
+    useSites(allowedSiteIds);
+  const isSuperAdmin = currentUser?.role === "super-admin";
+
+  const siteBlueprint: SiteBlueprint = currentSite ?? {
+    siteName: "No site",
+    clientName: "",
+    capacityMw: 0,
+    location: "",
+    zones: [],
+    inverters: [],
+    strings: [],
+  };
+  const setBlueprint = (next: SiteBlueprint) => {
+    if (currentSite) setBlueprintForSite(currentSite.id, next);
+  };
+  const resetBlueprint = () => {
+    if (currentSite) setBlueprintForSite(currentSite.id, { ...siteBlueprint });
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -518,32 +542,81 @@ export default function Dashboard() {
           </div>
           <nav className="space-y-1 text-sm">
             {[
-              { label: "Overview", Icon: LayoutDashboard },
-              { label: "Plant Simulation", Icon: Network },
-              { label: "Telemetry Analytics", Icon: BarChart3 },
-              { label: "Reports", Icon: FileText },
-              { label: "Site Configuration", Icon: Settings },
-            ].map(({ label, Icon }) => (
-              <a key={label} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" href="#">
-                <Icon className="h-4 w-4" />
-                {label}
-              </a>
-            ))}
+              { id: "overview", label: "Overview", Icon: LayoutDashboard, adminOnly: false },
+              { id: "simulation", label: "Plant Simulation", Icon: Network, adminOnly: false },
+              { id: "analytics", label: "Telemetry Analytics", Icon: BarChart3, adminOnly: false },
+              { id: "report", label: "Reports", Icon: FileText, adminOnly: false },
+              { id: "config", label: "Site Configuration", Icon: Settings, adminOnly: false },
+              { id: "sites", label: "Sites", Icon: Building2, adminOnly: true },
+              { id: "users", label: "Users", Icon: UsersIcon, adminOnly: true },
+            ]
+              .filter((item) => !item.adminOnly || isSuperAdmin)
+              .map(({ id, label, Icon }) => {
+                const isActive = activeView === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setActiveView(id)}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                );
+              })}
           </nav>
-          <div className="mt-8 rounded-xl border bg-background p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Client Site</div>
-            <div className="mt-2 font-semibold">{siteBlueprint.siteName}</div>
-            <div className="mt-1 text-sm text-muted-foreground">{siteBlueprint.location}</div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-lg bg-muted p-2">
-                <div className="text-muted-foreground">Capacity</div>
-                <div className="font-semibold">{siteBlueprint.capacityMw} MW</div>
-              </div>
-              <div className="rounded-lg bg-muted p-2">
-                <div className="text-muted-foreground">Strings</div>
-                <div className="font-semibold">{siteBlueprint.strings.length}</div>
-              </div>
-            </div>
+
+          <div className="mt-6 rounded-xl border bg-background p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Signed in as</div>
+            <div className="mt-2 font-semibold">{currentUser?.name ?? "—"}</div>
+            <div className="text-xs text-muted-foreground">{currentUser?.email}</div>
+            <Badge className="mt-2" variant={isSuperAdmin ? "default" : "outline"}>{currentUser?.role ?? "—"}</Badge>
+            {users.length > 1 && (
+              <select
+                className="mt-3 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                value={currentUserId}
+                onChange={(event) => setCurrentUserId(event.target.value)}
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>{user.name} ({user.role})</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-xl border bg-background p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Active Site</div>
+            {visibleSites.length === 0 ? (
+              <div className="mt-2 text-sm text-muted-foreground">No sites assigned. Ask a super admin for access.</div>
+            ) : (
+              <>
+                <select
+                  className="mt-2 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  value={currentSiteId}
+                  onChange={(event) => setCurrentSiteId(event.target.value)}
+                >
+                  {visibleSites.map((site) => (
+                    <option key={site.id} value={site.id}>{site.siteName}</option>
+                  ))}
+                </select>
+                <div className="mt-3 text-sm text-muted-foreground">{siteBlueprint.location}</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-lg bg-muted p-2">
+                    <div className="text-muted-foreground">Capacity</div>
+                    <div className="font-semibold">{siteBlueprint.capacityMw} MW</div>
+                  </div>
+                  <div className="rounded-lg bg-muted p-2">
+                    <div className="text-muted-foreground">Strings</div>
+                    <div className="font-semibold">{siteBlueprint.strings.length}</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </aside>
         <main className="min-w-0 px-4 py-5 md:px-7 lg:px-8">
@@ -723,7 +796,11 @@ export default function Dashboard() {
                   <p className="text-sm text-muted-foreground">Edit the live site layout. Changes are saved to this browser and reflected immediately on the simulation.</p>
                 </CardHeader>
               </Card>
-              <BlueprintEditor blueprint={siteBlueprint} setBlueprint={setBlueprint} resetBlueprint={resetBlueprint} />
+              {currentSite ? (
+                <BlueprintEditor blueprint={siteBlueprint} setBlueprint={setBlueprint} resetBlueprint={resetBlueprint} />
+              ) : (
+                <Card><CardContent className="p-6 text-sm text-muted-foreground">Select a site to edit its layout.</CardContent></Card>
+              )}
               <Card>
                 <CardHeader><CardTitle>Live String Status</CardTitle></CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -740,6 +817,32 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
+            )}
+
+            {activeView === "sites" && isSuperAdmin && (
+              <SitesManager
+                sites={sites}
+                currentSiteId={currentSiteId}
+                setCurrentSiteId={setCurrentSiteId}
+                addSite={addSite}
+                updateSite={updateSite}
+                deleteSite={deleteSite}
+              />
+            )}
+
+            {activeView === "users" && isSuperAdmin && (
+              <UsersManager
+                users={users}
+                sites={sites}
+                currentUserId={currentUserId}
+                addUser={addUser}
+                updateUser={updateUser}
+                deleteUser={deleteUser}
+              />
+            )}
+
+            {(activeView === "sites" || activeView === "users") && !isSuperAdmin && (
+              <Card><CardContent className="p-6 text-sm text-muted-foreground">You need super admin access to view this page.</CardContent></Card>
             )}
           </div>
         </main>
