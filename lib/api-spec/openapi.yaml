@@ -56,13 +56,6 @@ paths:
       security:
         - DeviceKeyAuth: []
         - DeviceBearerAuth: []
-      parameters:
-        - name: x-device-key
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Shared device token configured in the API server environment.
       requestBody:
         required: true
         content:
