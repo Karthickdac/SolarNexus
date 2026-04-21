@@ -24,4 +24,14 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
+## API Endpoints
+
+- `GET /api/healthz` — API health check.
+- `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, and received timestamp. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
+- `GET /api/modbus/readings?limit=25` — returns recent stored Modbus reader payloads for verification and future dashboard use.
+
+## Database Tables
+
+- `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads and intake metadata for later decoding and dashboard visualization.
+
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

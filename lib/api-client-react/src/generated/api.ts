@@ -5,18 +5,28 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  HealthStatus,
+  ListModbusReadingsParams,
+  ModbusReadingAck,
+  ModbusReadingIngestBody,
+  ModbusReadingsList,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +109,188 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Returns recent payloads received from a Modbus reader.
+ * @summary List recent Modbus readings
+ */
+export const getListModbusReadingsUrl = (params?: ListModbusReadingsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/modbus/readings?${stringifiedParams}`
+    : `/api/modbus/readings`;
+};
+
+export const listModbusReadings = async (
+  params?: ListModbusReadingsParams,
+  options?: RequestInit,
+): Promise<ModbusReadingsList> => {
+  return customFetch<ModbusReadingsList>(getListModbusReadingsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListModbusReadingsQueryKey = (
+  params?: ListModbusReadingsParams,
+) => {
+  return [`/api/modbus/readings`, ...(params ? [params] : [])] as const;
+};
+
+export const getListModbusReadingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listModbusReadings>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListModbusReadingsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listModbusReadings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListModbusReadingsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listModbusReadings>>
+  > = ({ signal }) => listModbusReadings(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listModbusReadings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListModbusReadingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listModbusReadings>>
+>;
+export type ListModbusReadingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent Modbus readings
+ */
+
+export function useListModbusReadings<
+  TData = Awaited<ReturnType<typeof listModbusReadings>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListModbusReadingsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listModbusReadings>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListModbusReadingsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Accepts HTTP JSON payloads from a Teltonika TRB246 or other Modbus reader.
+ * @summary Receive Modbus reader data
+ */
+export const getCreateModbusReadingUrl = () => {
+  return `/api/modbus/readings`;
+};
+
+export const createModbusReading = async (
+  modbusReadingIngestBody: ModbusReadingIngestBody,
+  options?: RequestInit,
+): Promise<ModbusReadingAck> => {
+  return customFetch<ModbusReadingAck>(getCreateModbusReadingUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(modbusReadingIngestBody),
+  });
+};
+
+export const getCreateModbusReadingMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createModbusReading>>,
+    TError,
+    { data: BodyType<ModbusReadingIngestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createModbusReading>>,
+  TError,
+  { data: BodyType<ModbusReadingIngestBody> },
+  TContext
+> => {
+  const mutationKey = ["createModbusReading"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createModbusReading>>,
+    { data: BodyType<ModbusReadingIngestBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createModbusReading(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateModbusReadingMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createModbusReading>>
+>;
+export type CreateModbusReadingMutationBody = BodyType<ModbusReadingIngestBody>;
+export type CreateModbusReadingMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Receive Modbus reader data
+ */
+export const useCreateModbusReading = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createModbusReading>>,
+    TError,
+    { data: BodyType<ModbusReadingIngestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createModbusReading>>,
+  TError,
+  { data: BodyType<ModbusReadingIngestBody> },
+  TContext
+> => {
+  return useMutation(getCreateModbusReadingMutationOptions(options));
+};

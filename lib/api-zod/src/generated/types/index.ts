@@ -6,4 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./errorResponse";
 export * from "./healthStatus";
+export * from "./listModbusReadingsParams";
+export * from "./modbusReading";
+export * from "./modbusReadingAck";
+export * from "./modbusReadingIngestBody";
+export * from "./modbusReadingIngestBodyRegisters";
+export * from "./modbusReadingIngestBodyValues";
+export * from "./modbusReadingRawPayload";
+export * from "./modbusReadingsList";
