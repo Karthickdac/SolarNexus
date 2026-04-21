@@ -46,7 +46,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KPICard } from "../components/kpi-card";
 import { SplitRefreshButton } from "../components/split-refresh-button";
 import { DataTable } from "../components/data-table";
-import { siteBlueprint, type BlueprintString } from "../config/site-blueprint";
+import type { BlueprintString, SiteBlueprint } from "../config/site-blueprint";
+import { useBlueprint } from "../config/blueprint-store";
+import { BlueprintEditor } from "../components/blueprint-editor";
 
 const CHART_COLORS = {
   amber: "#ff9900",
@@ -240,7 +242,8 @@ function CustomLegend({ payload }: LegendProps) {
   );
 }
 
-function PlantSimulation({ strings, loading }: { strings: StringRuntime[]; loading: boolean }) {
+function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBlueprint; strings: StringRuntime[]; loading: boolean }) {
+  const siteBlueprint = blueprint;
   const online = strings.filter((item) => item.status === "online").length;
   const warning = strings.filter((item) => item.status === "warning").length;
   const fault = strings.filter((item) => item.status === "fault").length;
@@ -399,6 +402,8 @@ export default function Dashboard() {
   const queryParams = { limit: 100 };
   const { data, isLoading, isFetching, dataUpdatedAt } = useListModbusReadings(queryParams);
   const loading = isLoading || isFetching;
+  const { blueprint, setBlueprint, resetBlueprint } = useBlueprint();
+  const siteBlueprint = blueprint;
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
@@ -465,7 +470,7 @@ export default function Dashboard() {
       string,
       ...evaluateStringStatus(string, latestByDevice.get(string.deviceId) ?? null),
     }));
-  }, [latestByDevice]);
+  }, [latestByDevice, siteBlueprint]);
 
   const latest = parsedData.at(-1) ?? null;
   const previous = parsedData.slice(0, -1);
@@ -604,12 +609,12 @@ export default function Dashboard() {
                 <KPICard title="Signal Quality" value={latestSignal ? `${latestSignal}%` : "--"} loading={loading} valueColor={latestSignal > 70 ? CHART_COLORS.green : latestSignal < 60 ? CHART_COLORS.red : CHART_COLORS.amber} />
                 <KPICard title="Total Energy Delivered" value={totalEnergy ? `${totalEnergy.toFixed(2)} kWh` : "--"} loading={loading} valueColor={CHART_COLORS.cyan} />
               </div>
-              <PlantSimulation strings={stringRuntime} loading={loading} />
+              <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
             </div>
             )}
 
             {activeView === "simulation" && (
-              <PlantSimulation strings={stringRuntime} loading={loading} />
+              <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
             )}
 
             {activeView === "analytics" && (
@@ -715,15 +720,12 @@ export default function Dashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Settings className="h-5 w-5 text-primary" /> Blueprint Configuration</CardTitle>
+                  <p className="text-sm text-muted-foreground">Edit the live site layout. Changes are saved to this browser and reflected immediately on the simulation.</p>
                 </CardHeader>
-                <CardContent className="grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">Site</div><div className="mt-1 text-xl font-semibold">{siteBlueprint.siteName}</div><div className="mt-2 text-sm text-muted-foreground">{siteBlueprint.clientName}</div></div>
-                  <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">Configured Inverters</div><div className="mt-1 text-xl font-semibold">{siteBlueprint.inverters.length}</div><div className="mt-2 text-sm text-muted-foreground">Mapped to TRB246 gateways</div></div>
-                  <div className="rounded-xl border p-4"><div className="text-sm text-muted-foreground">Configured Strings</div><div className="mt-1 text-xl font-semibold">{siteBlueprint.strings.length}</div><div className="mt-2 text-sm text-muted-foreground">Green, amber, and red states are calculated live</div></div>
-                </CardContent>
               </Card>
+              <BlueprintEditor blueprint={siteBlueprint} setBlueprint={setBlueprint} resetBlueprint={resetBlueprint} />
               <Card>
-                <CardHeader><CardTitle>String Mapping</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Live String Status</CardTitle></CardHeader>
                 <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {stringRuntime.map((item) => (
                     <div key={item.string.id} className="rounded-xl border p-4" style={{ borderColor: item.color }}>
