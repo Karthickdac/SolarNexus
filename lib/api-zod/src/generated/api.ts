@@ -67,7 +67,7 @@ export const ListModbusReadingsResponse = zod.object({
 });
 
 /**
- * Accepts HTTP JSON payloads from a Teltonika TRB246 or other Modbus reader.
+ * Accepts HTTP JSON payloads from a Teltonika TRB246 or other Modbus reader. Requests must include the shared device token in the x-device-key header or as a Bearer token.
  * @summary Receive Modbus reader data
  */
 export const CreateModbusReadingBody = zod.object({

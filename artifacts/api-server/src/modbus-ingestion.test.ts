@@ -124,4 +124,32 @@ describe("POST /api/modbus/readings", () => {
     );
     },
   );
+
+  it(
+    "accepts bearer token authentication",
+    { skip: ingestToken ? false : "MODBUS_INGEST_TOKEN is required for bearer authentication test" },
+    async () => {
+      const deviceId = `bearer-trb246-${Date.now()}`;
+      const response = await fetch(`${apiBaseUrl}/modbus/readings`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${ingestToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          deviceId,
+          registers: {
+            "1": 235,
+          },
+        }),
+      });
+
+      assert.equal(response.status, 200);
+
+      const body = (await response.json()) as ModbusReadingAck;
+      assert.equal(body.accepted, true);
+      assert.equal(body.reading.deviceId, deviceId);
+      assert.equal(body.reading.parsingStatus, "accepted");
+    },
+  );
 });
