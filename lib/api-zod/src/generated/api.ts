@@ -38,6 +38,29 @@ export const ListModbusReadingsResponse = zod.object({
       source: zod.string().nullable(),
       parsingStatus: zod.string(),
       rawPayload: zod.record(zod.string(), zod.unknown()),
+      decodedValues: zod.object({
+        status: zod.enum([
+          "decoded",
+          "contains_unknown_registers",
+          "contains_invalid_registers",
+          "no_registers",
+        ]),
+        registers: zod.array(
+          zod.object({
+            address: zod.string(),
+            name: zod.string(),
+            unit: zod.string().nullable(),
+            status: zod.enum(["decoded", "unknown", "invalid"]),
+            value: zod
+              .union([zod.string(), zod.number(), zod.boolean()])
+              .nullable(),
+            rawValue: zod.unknown(),
+            displayValue: zod.string().optional(),
+            error: zod.string().optional(),
+          }),
+        ),
+        providedValues: zod.record(zod.string(), zod.unknown()),
+      }),
       receivedAt: zod.coerce.date(),
     }),
   ),
@@ -89,6 +112,29 @@ export const CreateModbusReadingResponse = zod.object({
     source: zod.string().nullable(),
     parsingStatus: zod.string(),
     rawPayload: zod.record(zod.string(), zod.unknown()),
+    decodedValues: zod.object({
+      status: zod.enum([
+        "decoded",
+        "contains_unknown_registers",
+        "contains_invalid_registers",
+        "no_registers",
+      ]),
+      registers: zod.array(
+        zod.object({
+          address: zod.string(),
+          name: zod.string(),
+          unit: zod.string().nullable(),
+          status: zod.enum(["decoded", "unknown", "invalid"]),
+          value: zod
+            .union([zod.string(), zod.number(), zod.boolean()])
+            .nullable(),
+          rawValue: zod.unknown(),
+          displayValue: zod.string().optional(),
+          error: zod.string().optional(),
+        }),
+      ),
+      providedValues: zod.record(zod.string(), zod.unknown()),
+    }),
     receivedAt: zod.coerce.date(),
   }),
 });

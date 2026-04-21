@@ -7,6 +7,7 @@ import {
   ListModbusReadingsQueryParams,
   ListModbusReadingsResponse,
 } from "@workspace/api-zod";
+import { decodeModbusPayload } from "../modbus-decoder";
 
 const router: IRouter = Router();
 
@@ -68,6 +69,7 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
     (typeof rawPayload["device"] === "string" && rawPayload["device"].trim()) ||
     (typeof rawPayload["imei"] === "string" && rawPayload["imei"].trim()) ||
     "trb246";
+  const decodedValues = decodeModbusPayload(rawPayload);
 
   const [reading] = await db
     .insert(modbusReadingsTable)
@@ -76,6 +78,7 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
       source: getSource(req),
       parsingStatus: "accepted",
       rawPayload,
+      decodedValues,
     })
     .returning();
 

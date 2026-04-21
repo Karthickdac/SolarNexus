@@ -37,6 +37,46 @@ export interface ModbusReadingIngestBody {
 
 export type ModbusReadingRawPayload = { [key: string]: unknown };
 
+export type ModbusDecodedValuesStatus =
+  (typeof ModbusDecodedValuesStatus)[keyof typeof ModbusDecodedValuesStatus];
+
+export const ModbusDecodedValuesStatus = {
+  decoded: "decoded",
+  contains_unknown_registers: "contains_unknown_registers",
+  contains_invalid_registers: "contains_invalid_registers",
+  no_registers: "no_registers",
+} as const;
+
+export type ModbusDecodedRegisterStatus =
+  (typeof ModbusDecodedRegisterStatus)[keyof typeof ModbusDecodedRegisterStatus];
+
+export const ModbusDecodedRegisterStatus = {
+  decoded: "decoded",
+  unknown: "unknown",
+  invalid: "invalid",
+} as const;
+
+export interface ModbusDecodedRegister {
+  address: string;
+  name: string;
+  /** @nullable */
+  unit: string | null;
+  status: ModbusDecodedRegisterStatus;
+  /** @nullable */
+  value: string | number | boolean | null;
+  rawValue: unknown;
+  displayValue?: string;
+  error?: string;
+}
+
+export type ModbusDecodedValuesProvidedValues = { [key: string]: unknown };
+
+export interface ModbusDecodedValues {
+  status: ModbusDecodedValuesStatus;
+  registers: ModbusDecodedRegister[];
+  providedValues: ModbusDecodedValuesProvidedValues;
+}
+
 export interface ModbusReading {
   id: number;
   deviceId: string;
@@ -44,6 +84,7 @@ export interface ModbusReading {
   source: string | null;
   parsingStatus: string;
   rawPayload: ModbusReadingRawPayload;
+  decodedValues: ModbusDecodedValues;
   receivedAt: string;
 }
 

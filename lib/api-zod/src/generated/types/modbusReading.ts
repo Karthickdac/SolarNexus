@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ModbusDecodedValues } from "./modbusDecodedValues";
 import type { ModbusReadingRawPayload } from "./modbusReadingRawPayload";
 
 export interface ModbusReading {
@@ -14,5 +15,6 @@ export interface ModbusReading {
   source: string | null;
   parsingStatus: string;
   rawPayload: ModbusReadingRawPayload;
+  decodedValues: ModbusDecodedValues;
   receivedAt: Date;
 }

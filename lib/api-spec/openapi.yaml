@@ -123,6 +123,8 @@ components:
         rawPayload:
           type: object
           additionalProperties: true
+        decodedValues:
+          $ref: "#/components/schemas/ModbusDecodedValues"
         receivedAt:
           type: string
           format: date-time
@@ -132,7 +134,62 @@ components:
         - source
         - parsingStatus
         - rawPayload
+        - decodedValues
         - receivedAt
+    ModbusDecodedValues:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - decoded
+            - contains_unknown_registers
+            - contains_invalid_registers
+            - no_registers
+        registers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModbusDecodedRegister"
+        providedValues:
+          type: object
+          additionalProperties: true
+      required:
+        - status
+        - registers
+        - providedValues
+    ModbusDecodedRegister:
+      type: object
+      properties:
+        address:
+          type: string
+        name:
+          type: string
+        unit:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum:
+            - decoded
+            - unknown
+            - invalid
+        value:
+          type:
+            - string
+            - number
+            - boolean
+            - "null"
+        rawValue: {}
+        displayValue:
+          type: string
+        error:
+          type: string
+      required:
+        - address
+        - name
+        - unit
+        - status
+        - value
+        - rawValue
     ModbusReadingAck:
       type: object
       properties:

@@ -24,6 +24,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
+- `pnpm --filter @workspace/api-server run test:decoder` — run Modbus decoder unit coverage
+- `pnpm --filter @workspace/api-server run test:ingestion` — verify Modbus ingestion through the running API
 - `pnpm --filter @workspace/trb246-dashboard run dev` — run the TRB246 dashboard locally
 
 ## Artifacts
@@ -34,22 +36,26 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ## API Endpoints
 
 - `GET /api/healthz` — API health check.
-- `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, and received timestamp. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
-- `GET /api/modbus/readings?limit=25` — returns recent stored Modbus reader payloads for verification and dashboard visualization.
+- `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, decoded values, and received timestamp. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
+- `GET /api/modbus/readings?limit=25` — returns recent stored Modbus reader payloads plus decoded register values for verification and dashboard visualization.
 
 ## Database Tables
 
-- `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads and intake metadata for later decoding and dashboard visualization.
+- `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads, intake metadata, and decoded register values. Unknown or invalid registers are retained in `decoded_values.registers` with explicit status/error details.
 
 ## Dashboard Notes
 
 - The dashboard reads from `GET /api/modbus/readings` through generated React Query hooks.
 - Seed test readings use `source = 'sample-trb246'` and include two devices: `TRB246-GATEWAY-01` and `TRB246-GATEWAY-02`.
-- The dashboard parses `rawPayload.values` and `rawPayload.registers` defensively for temperature, voltage, current, power, energy, RSSI, signal quality, relay, and uptime metrics.
+- The dashboard parses `rawPayload.values`, `rawPayload.registers`, and stored decoded values defensively for temperature, voltage, current, power, energy, RSSI, signal quality, relay, and uptime metrics.
+
+## Configuration
+
+- `TRB246_REGISTER_MAP_JSON` — optional JSON object for overriding or adding register definitions without code changes. Each key is a register address and each value includes `name`, `unit`, `kind` (`number` or `boolean`), optional `scale`, and optional `labels`.
 
 ## Rollout Notes
 
-- Apply the database schema in each target environment before sending live TRB246 data to `POST /api/modbus/readings`, otherwise inserts will fail if the `modbus_readings` table is missing.
+- Apply the database schema in each target environment before deploying this API version or sending live TRB246 data, otherwise reads/writes can fail if the `modbus_readings` table or `decoded_values` column is missing.
 - Development currently includes sample TRB246 readings for dashboard/report visualization; production deployments should seed or ingest real readings separately.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
