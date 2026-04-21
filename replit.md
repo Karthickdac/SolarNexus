@@ -50,6 +50,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - The dashboard parses `rawPayload.values`, `rawPayload.registers`, and stored decoded values defensively for temperature, voltage, current, power, energy, RSSI, signal quality, relay, and uptime metrics.
 - `artifacts/trb246-dashboard/src/config/site-blueprint.ts` drives the enterprise plant simulation. Replace this file per client site to map zones, inverters, strings, positions, gateway IDs, MPPT labels, expected output, and live status thresholds.
 - The plant console now includes sidebar navigation, overview/simulation/analytics/report/config views, and a visual blueprint simulation where strings/inverters render green for healthy telemetry, amber for review states, and red for stale, missing, invalid, weak, or low-output telemetry.
+- Dashboard metric mapping is centralized in `artifacts/trb246-dashboard/src/pages/dashboard.tsx` as `METRIC_DEFINITIONS`, covering provided value aliases, decoded register names, and fallback register addresses.
 
 ## Configuration
 

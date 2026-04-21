@@ -5,6 +5,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   Legend,
   Line,
@@ -15,8 +17,10 @@ import {
   YAxis,
 } from "recharts";
 import {
+  AlertTriangle,
   BarChart3,
   Building2,
+  CheckCircle2,
   Cpu,
   Download,
   FileText,
@@ -29,7 +33,7 @@ import {
   Users as UsersIcon,
   Zap,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   getListModbusReadingsQueryKey,
   useListModbusReadings,
@@ -66,10 +70,58 @@ const CHART_COLORS = {
 
 type StatusLevel = "online" | "warning" | "fault";
 
+const METRIC_DEFINITIONS = {
+  temperatureC: {
+    aliases: ["temperatureC", "temperature", "temp"],
+    names: ["temperature", "temperatureC", "temp"],
+    addresses: ["1", "40001", "30001"],
+  },
+  flowLpm: {
+    aliases: ["flowLpm", "flow", "flowRate"],
+    names: ["flow", "flowRate", "flowLpm"],
+    addresses: ["2", "40002", "30002"],
+  },
+  voltageV: {
+    aliases: ["voltageV", "voltage"],
+    names: ["voltage", "voltageV"],
+    addresses: ["3", "40003", "30003"],
+  },
+  powerW: {
+    aliases: ["powerW", "power"],
+    names: ["power", "powerW"],
+    addresses: ["30004"],
+  },
+  energyKwh: {
+    aliases: ["energyKwh", "energy"],
+    names: ["energy", "energyKwh"],
+    addresses: ["30005"],
+  },
+  rssiDbm: {
+    aliases: ["rssiDbm", "rssi"],
+    names: ["rssi", "rssiDbm"],
+    addresses: ["30100"],
+  },
+  signalQuality: {
+    aliases: ["signalQuality", "signal", "quality"],
+    names: ["signalQuality", "signal", "quality"],
+    addresses: ["30101"],
+  },
+  relayState: {
+    aliases: ["relayState", "relay", "relay_state"],
+    names: ["relay_state", "relay", "relayState"],
+    addresses: ["4", "40004"],
+  },
+  alarmState: {
+    aliases: ["alarmState", "alarm", "alarm_state"],
+    names: ["alarm_state", "alarm", "alarmState"],
+    addresses: ["5", "40005"],
+  },
+} as const;
+
 type ChartPayloadEntry = {
   color?: string;
   name?: string;
-  value?: string | number | null;
+  value?: string | number | boolean | null;
 };
 
 type TooltipProps = {
@@ -85,31 +137,26 @@ type LegendProps = {
   }>;
 };
 
-type ModbusPayloadValues = {
-  temperatureC?: unknown;
-  voltageV?: unknown;
-  currentA?: unknown;
-  powerW?: unknown;
-  energyKwh?: unknown;
-  rssiDbm?: unknown;
-  signalQuality?: unknown;
-};
-
 type ParsedReading = {
   id: number;
   deviceId: string;
+  source: string | null;
   receivedAt: string;
   timeLabel: string;
   dateLabel: string;
   temperatureC: number | null;
+  flowLpm: number | null;
   voltageV: number | null;
-  currentA: number | null;
   powerW: number | null;
   energyKwh: number | null;
   rssiDbm: number | null;
   signalQuality: number | null;
+  relayState: boolean | null;
+  alarmState: boolean | null;
+  decodedCount: number;
   status: string;
   decodedStatus: string;
+  parsingStatus: string;
   decodedRegisters: ModbusDecodedRegister[];
 };
 
@@ -137,17 +184,106 @@ function numericValue(value: unknown): number | null {
   return null;
 }
 
-function getPayloadValues(rawPayload: ModbusReadingRawPayload): ModbusPayloadValues {
-  return isRecord(rawPayload.values) ? rawPayload.values : {};
+function booleanValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 0) return false;
+    if (value === 1) return true;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["0", "false", "off", "normal", "inactive", "closed"].includes(normalized)) return false;
+    if (["1", "true", "on", "alarm", "active", "open"].includes(normalized)) return true;
+  }
+  return null;
 }
 
-function getPayloadRegisters(rawPayload: ModbusReadingRawPayload): Record<string, unknown> {
-  return isRecord(rawPayload.registers) ? rawPayload.registers : {};
+function normalizeKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function registerNumber(registers: ModbusDecodedRegister[], nameIncludes: string): number | null {
-  const match = registers.find((register) => register.name.toLowerCase().includes(nameIncludes.toLowerCase()));
-  return match ? numericValue(match.value) : null;
+function getRawValues(rawPayload: ModbusReadingRawPayload): Record<string, unknown> {
+  if (isRecord(rawPayload.values)) return rawPayload.values;
+  if (isRecord(rawPayload.payload) && isRecord(rawPayload.payload.values)) return rawPayload.payload.values;
+  return {};
+}
+
+function getRawRegisters(rawPayload: ModbusReadingRawPayload): Record<string, unknown> {
+  if (isRecord(rawPayload.registers)) return rawPayload.registers;
+  if (isRecord(rawPayload.payload) && isRecord(rawPayload.payload.registers)) return rawPayload.payload.registers;
+  return {};
+}
+
+function getProvidedValues(reading: ModbusReading): Record<string, unknown> {
+  if (isRecord(reading.decodedValues?.providedValues)) return reading.decodedValues.providedValues;
+  return getRawValues(reading.rawPayload);
+}
+
+function valueFromMap(values: Record<string, unknown>, aliases: readonly string[]) {
+  const normalizedAliases = aliases.map(normalizeKey);
+  const entry = Object.entries(values).find(([key]) => normalizedAliases.includes(normalizeKey(key)));
+  return entry?.[1];
+}
+
+function decodedRegister(
+  registers: ModbusDecodedRegister[],
+  names: readonly string[],
+  addresses: readonly string[],
+) {
+  const normalizedNames = names.map(normalizeKey);
+  const addressSet = new Set(addresses);
+  return registers.find((register) => {
+    return register.status === "decoded" && (normalizedNames.includes(normalizeKey(register.name)) || addressSet.has(register.address));
+  });
+}
+
+function metricNumber(
+  reading: ModbusReading,
+  aliases: readonly string[],
+  names: readonly string[],
+  addresses: readonly string[],
+) {
+  const provided = numericValue(valueFromMap(getProvidedValues(reading), aliases));
+  if (provided !== null) return provided;
+
+  const register = decodedRegister(reading.decodedValues?.registers ?? [], names, addresses);
+  const decoded = numericValue(register?.value);
+  if (decoded !== null) return decoded;
+
+  const rawRegisters = getRawRegisters(reading.rawPayload);
+  const rawRegister = addresses.map((address) => numericValue(rawRegisters[address])).find((value) => value !== null);
+  return rawRegister ?? null;
+}
+
+function metricBoolean(reading: ModbusReading, aliases: readonly string[], names: readonly string[], addresses: readonly string[]) {
+  const provided = booleanValue(valueFromMap(getProvidedValues(reading), aliases));
+  if (provided !== null) return provided;
+
+  const register = decodedRegister(reading.decodedValues?.registers ?? [], names, addresses);
+  const decoded = booleanValue(register?.value);
+  if (decoded !== null) return decoded;
+
+  const rawRegisters = getRawRegisters(reading.rawPayload);
+  const rawRegister = addresses.map((address) => booleanValue(rawRegisters[address])).find((value) => value !== null);
+  return rawRegister ?? null;
+}
+
+function safeFormatDate(date: string, pattern: string) {
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? "Unknown time" : format(parsed, pattern);
+}
+
+function formatMetric(value: number | null, digits = 1) {
+  return value === null ? "--" : value.toFixed(digits);
+}
+
+function formatBoolean(value: boolean | null) {
+  if (value === null) return "--";
+  return value ? "On" : "Off";
+}
+
+function formatStatus(status: string) {
+  return status.replace(/_/g, " ");
 }
 
 function statusColor(status: StatusLevel): string {
@@ -243,6 +379,42 @@ function CustomLegend({ payload }: LegendProps) {
         </div>
       ))}
     </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="px-6 py-10 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+          <AlertTriangle className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold text-foreground">No TRB246 readings received yet</h2>
+        <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
+          Configure the TRB246 or Modbus reader to send JSON readings to <span className="font-mono text-foreground">/api/modbus/readings</span>. Once the first payload arrives, SolarNexus will show live device status, the last received time, decoded register values, and historical trends.
+        </p>
+        <div className="mx-auto mt-5 max-w-2xl rounded-lg border bg-muted/40 p-4 text-left text-xs text-muted-foreground">
+          <p className="mb-2 font-semibold text-foreground">Expected payload shape</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap font-mono">{`{
+  "deviceId": "TRB246-GATEWAY-01",
+  "registers": { "40001": 224, "40002": 1520, "40003": 24100, "40004": 1 }
+}`}</pre>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NoDecodedValuesState() {
+  return (
+    <Card className="lg:col-span-2">
+      <CardContent className="px-6 py-8 text-center">
+        <h3 className="text-base font-semibold text-foreground">Readings are arriving, but no numeric values are decoded yet</h3>
+        <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
+          Historical charts appear after incoming payloads include known register addresses or decoded values. Confirm the TRB246 register map matches the registers your device is sending.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -404,7 +576,7 @@ export default function Dashboard() {
   const [activeView, setActiveView] = useState("overview");
 
   const queryParams = { limit: 100 };
-  const { data, isLoading, isFetching, dataUpdatedAt } = useListModbusReadings(queryParams);
+  const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(queryParams);
   const loading = isLoading || isFetching;
 
   const { users, currentUser, currentUserId, setCurrentUserId, addUser, updateUser, deleteUser } = useUsers();
@@ -454,30 +626,29 @@ export default function Dashboard() {
 
   const parsedData = useMemo<ParsedReading[]>(() => {
     return [...rawReadings].reverse().map((reading: ModbusReading) => {
-      const values = getPayloadValues(reading.rawPayload);
-      const registers = getPayloadRegisters(reading.rawPayload);
       const decodedRegisters = reading.decodedValues?.registers ?? [];
-      const registerTemperature = numericValue(registers["30001"]);
-      const registerVoltage = numericValue(registers["30002"]);
-      const registerCurrent = numericValue(registers["30003"]);
-      const decodedTemperature = registerNumber(decodedRegisters, "temperature");
-      const decodedVoltage = registerNumber(decodedRegisters, "voltage");
+      const decodedCount = decodedRegisters.filter((register) => register.status === "decoded").length;
 
       return {
         id: reading.id,
         deviceId: reading.deviceId,
+        source: reading.source,
         receivedAt: reading.receivedAt,
-        timeLabel: format(new Date(reading.receivedAt), "HH:mm"),
-        dateLabel: format(new Date(reading.receivedAt), "MMM dd, HH:mm"),
-        temperatureC: numericValue(values.temperatureC) ?? decodedTemperature ?? (registerTemperature === null ? null : registerTemperature / 10),
-        voltageV: numericValue(values.voltageV) ?? decodedVoltage ?? (registerVoltage === null ? null : registerVoltage / 100),
-        currentA: numericValue(values.currentA) ?? (registerCurrent === null ? null : registerCurrent / 1000),
-        powerW: numericValue(values.powerW) ?? numericValue(registers["30004"]),
-        energyKwh: numericValue(values.energyKwh),
-        rssiDbm: numericValue(values.rssiDbm) ?? numericValue(registers["30100"]),
-        signalQuality: numericValue(values.signalQuality) ?? numericValue(registers["30101"]),
+        timeLabel: safeFormatDate(reading.receivedAt, "HH:mm:ss"),
+        dateLabel: safeFormatDate(reading.receivedAt, "MMM dd, HH:mm"),
+        temperatureC: metricNumber(reading, METRIC_DEFINITIONS.temperatureC.aliases, METRIC_DEFINITIONS.temperatureC.names, METRIC_DEFINITIONS.temperatureC.addresses),
+        flowLpm: metricNumber(reading, METRIC_DEFINITIONS.flowLpm.aliases, METRIC_DEFINITIONS.flowLpm.names, METRIC_DEFINITIONS.flowLpm.addresses),
+        voltageV: metricNumber(reading, METRIC_DEFINITIONS.voltageV.aliases, METRIC_DEFINITIONS.voltageV.names, METRIC_DEFINITIONS.voltageV.addresses),
+        powerW: metricNumber(reading, METRIC_DEFINITIONS.powerW.aliases, METRIC_DEFINITIONS.powerW.names, METRIC_DEFINITIONS.powerW.addresses),
+        energyKwh: metricNumber(reading, METRIC_DEFINITIONS.energyKwh.aliases, METRIC_DEFINITIONS.energyKwh.names, METRIC_DEFINITIONS.energyKwh.addresses),
+        rssiDbm: metricNumber(reading, METRIC_DEFINITIONS.rssiDbm.aliases, METRIC_DEFINITIONS.rssiDbm.names, METRIC_DEFINITIONS.rssiDbm.addresses),
+        signalQuality: metricNumber(reading, METRIC_DEFINITIONS.signalQuality.aliases, METRIC_DEFINITIONS.signalQuality.names, METRIC_DEFINITIONS.signalQuality.addresses),
+        relayState: metricBoolean(reading, METRIC_DEFINITIONS.relayState.aliases, METRIC_DEFINITIONS.relayState.names, METRIC_DEFINITIONS.relayState.addresses),
+        alarmState: metricBoolean(reading, METRIC_DEFINITIONS.alarmState.aliases, METRIC_DEFINITIONS.alarmState.names, METRIC_DEFINITIONS.alarmState.addresses),
+        decodedCount,
         status: reading.parsingStatus,
         decodedStatus: reading.decodedValues?.status ?? "no_registers",
+        parsingStatus: reading.parsingStatus,
         decodedRegisters,
       };
     });
@@ -498,13 +669,27 @@ export default function Dashboard() {
 
   const latest = parsedData.at(-1) ?? null;
   const previous = parsedData.slice(0, -1);
-  const avgTemp = previous.reduce((acc, item) => acc + (item.temperatureC ?? 0), 0) / (previous.length || 1);
-  const tempDiff = latest?.temperatureC && avgTemp ? latest.temperatureC - avgTemp : 0;
+  const latestReceivedDate = latest ? new Date(latest.receivedAt) : null;
+  const validLatestReceivedDate = latestReceivedDate && !Number.isNaN(latestReceivedDate.getTime()) ? latestReceivedDate : null;
+  const lastReceivedDisplay = validLatestReceivedDate
+    ? `${formatDistanceToNow(validLatestReceivedDate, { addSuffix: true })} (${format(validLatestReceivedDate, "MMM dd, yyyy HH:mm:ss")})`
+    : "No readings yet";
+  const avgTemp = previous.filter((item) => item.temperatureC !== null).reduce((acc, item, _, array) => acc + (item.temperatureC ?? 0) / array.length, 0);
+  const tempDiff = latest?.temperatureC !== null && latest?.temperatureC !== undefined && avgTemp ? latest.temperatureC - avgTemp : 0;
   const latestPower = latest?.powerW ?? 0;
-  const avgPower = previous.reduce((acc, item) => acc + (item.powerW ?? 0), 0) / (previous.length || 1);
+  const avgPower = previous.filter((item) => item.powerW !== null).reduce((acc, item, _, array) => acc + (item.powerW ?? 0) / array.length, 0);
   const powerDiff = latestPower && avgPower ? latestPower - avgPower : 0;
   const latestSignal = latest?.signalQuality ?? 0;
-  const totalEnergy = latest?.energyKwh ?? 0;
+  const decodedRatio = latest && latest.decodedCount > 0 ? `${latest.decodedCount} registers` : formatStatus(latest?.decodedStatus ?? "no_registers");
+  const chartData = parsedData.map((reading) => ({
+    ...reading,
+    relayStateNumeric: reading.relayState === null ? null : reading.relayState ? 1 : 0,
+    alarmStateNumeric: reading.alarmState === null ? null : reading.alarmState ? 1 : 0,
+  }));
+  const hasMetricHistory = parsedData.some((reading) =>
+    [reading.temperatureC, reading.flowLpm, reading.voltageV, reading.powerW, reading.energyKwh, reading.rssiDbm, reading.signalQuality].some((value) => value !== null),
+  );
+  const hasDigitalHistory = parsedData.some((reading) => reading.relayState !== null || reading.alarmState !== null);
   const gridColor = isDark ? "rgba(255,255,255,0.08)" : "#e5e7eb";
   const tickColor = isDark ? "#a1a1aa" : "#64748b";
   const activeFaults = stringRuntime.filter((item) => item.status === "fault").length;
@@ -514,16 +699,16 @@ export default function Dashboard() {
   const columns: ColumnDef<ParsedReading>[] = [
     { accessorKey: "id", header: "ID", cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span> },
     { accessorKey: "deviceId", header: "Device", cell: ({ row }) => <span className="font-medium">{row.original.deviceId}</span> },
-    { accessorKey: "receivedAt", header: "Timestamp", cell: ({ row }) => <span>{format(new Date(row.original.receivedAt), "MMM dd, yyyy HH:mm:ss")}</span> },
-    { accessorKey: "temperatureC", header: "Temp", cell: ({ row }) => <span>{row.original.temperatureC?.toFixed(1) ?? "--"} °C</span> },
-    { accessorKey: "powerW", header: "Power", cell: ({ row }) => <span className="font-semibold">{row.original.powerW?.toFixed(1) ?? "--"} W</span> },
-    { accessorKey: "signalQuality", header: "Signal", cell: ({ row }) => <span>{row.original.signalQuality ?? "--"}%</span> },
-    { accessorKey: "decodedStatus", header: "Decode", cell: ({ row }) => <Badge variant="outline">{row.original.decodedStatus}</Badge> },
+    { accessorKey: "receivedAt", header: "Received", cell: ({ row }) => <span>{safeFormatDate(row.original.receivedAt, "MMM dd, yyyy HH:mm:ss")}</span> },
+    { accessorKey: "temperatureC", header: "Temp (°C)", cell: ({ row }) => <span>{formatMetric(row.original.temperatureC)}</span> },
+    { accessorKey: "flowLpm", header: "Flow (L/min)", cell: ({ row }) => <span>{formatMetric(row.original.flowLpm, 2)}</span> },
+    { accessorKey: "voltageV", header: "Voltage (V)", cell: ({ row }) => <span>{formatMetric(row.original.voltageV, 2)}</span> },
+    { accessorKey: "relayState", header: "Relay", cell: ({ row }) => <span>{formatBoolean(row.original.relayState)}</span> },
+    { accessorKey: "alarmState", header: "Alarm", cell: ({ row }) => <span>{row.original.alarmState === true ? "Alarm" : row.original.alarmState === false ? "Normal" : "--"}</span> },
+    { accessorKey: "decodedStatus", header: "Decoded", cell: ({ row }) => <Badge variant="outline" className="capitalize">{formatStatus(row.original.decodedStatus)}</Badge> },
   ];
 
-  const lastRefreshed = dataUpdatedAt
-    ? `${new Date(dataUpdatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()} on ${new Date(dataUpdatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "waiting for data";
+  const lastRefreshed = dataUpdatedAt ? format(new Date(dataUpdatedAt), "MMM dd, HH:mm:ss") : "waiting for data";
 
   return (
     <div className="min-h-screen bg-background">
@@ -633,7 +818,8 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Blueprint-driven simulation, live string status tracking, and Modbus telemetry reporting.
               </p>
-              <p className="mt-2 font-mono text-xs text-muted-foreground">Last refresh: {lastRefreshed}</p>
+              <p className="mt-2 font-mono text-xs text-muted-foreground">Last received: {lastReceivedDisplay}</p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">Dashboard refresh: {lastRefreshed}</p>
             </div>
             <div className="flex items-center gap-2 print:hidden">
               <SplitRefreshButton
@@ -654,6 +840,18 @@ export default function Dashboard() {
           </header>
 
           <div className="space-y-5">
+            {isError && (
+              <Card className="border-destructive/40">
+                <CardContent className="flex items-start gap-3 px-6 py-5">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                  <div>
+                    <h2 className="font-semibold text-foreground">Unable to load Modbus readings</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "The readings API returned an error."}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid gap-2 rounded-xl border bg-card p-1 md:inline-grid md:grid-cols-5">
               {[
                 { id: "overview", label: "Overview" },
@@ -676,13 +874,19 @@ export default function Dashboard() {
 
             {activeView === "overview" && (
             <div className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <KPICard title="Gateway Temperature" value={latest?.temperatureC ? `${latest.temperatureC.toFixed(1)} °C` : "--"} change={`${Math.abs(tempDiff).toFixed(1)} °C`} trend={tempDiff > 1 ? "up" : tempDiff < -1 ? "down" : "neutral"} loading={loading} valueColor={latest?.temperatureC && latest.temperatureC > 60 ? CHART_COLORS.red : CHART_COLORS.amber} />
-                <KPICard title="Current Power Draw" value={latestPower ? `${latestPower.toFixed(1)} W` : "--"} change={`${Math.abs(powerDiff).toFixed(1)} W`} trend={powerDiff > 5 ? "up" : powerDiff < -5 ? "down" : "neutral"} loading={loading} valueColor={CHART_COLORS.blue} />
-                <KPICard title="Signal Quality" value={latestSignal ? `${latestSignal}%` : "--"} loading={loading} valueColor={latestSignal > 70 ? CHART_COLORS.green : latestSignal < 60 ? CHART_COLORS.red : CHART_COLORS.amber} />
-                <KPICard title="Total Energy Delivered" value={totalEnergy ? `${totalEnergy.toFixed(2)} kWh` : "--"} loading={loading} valueColor={CHART_COLORS.cyan} />
-              </div>
-              <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
+              {!loading && !isError && parsedData.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <KPICard title="Latest Temperature" value={latest?.temperatureC === null || latest?.temperatureC === undefined ? "--" : `${latest.temperatureC.toFixed(1)} °C`} change={`${Math.abs(tempDiff).toFixed(1)} °C`} trend={tempDiff > 1 ? "up" : tempDiff < -1 ? "down" : "neutral"} loading={loading} valueColor={latest?.temperatureC !== null && latest?.temperatureC !== undefined && latest.temperatureC > 60 ? CHART_COLORS.red : CHART_COLORS.amber} />
+                    <KPICard title="Latest Flow" value={latest?.flowLpm === null || latest?.flowLpm === undefined ? "--" : `${latest.flowLpm.toFixed(2)} L/min`} loading={loading} valueColor={CHART_COLORS.blue} />
+                    <KPICard title="Latest Voltage" value={latest?.voltageV === null || latest?.voltageV === undefined ? "--" : `${latest.voltageV.toFixed(2)} V`} loading={loading} valueColor={CHART_COLORS.purple} />
+                    <KPICard title="Decoded Values" value={decodedRatio} loading={loading} valueColor={latest?.decodedCount ? CHART_COLORS.green : CHART_COLORS.slate} />
+                  </div>
+                  <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
+                </>
+              )}
             </div>
             )}
 
@@ -693,65 +897,108 @@ export default function Dashboard() {
             {activeView === "analytics" && (
             <div className="space-y-5">
               <div className="grid gap-5 xl:grid-cols-2">
+                {loading ? (
+                  <>
+                    <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+                    <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+                  </>
+                ) : hasMetricHistory ? (
+                  <>
+                    <Card>
+                      <CardHeader className="flex-row items-center justify-between">
+                        <CardTitle>Temperature & Flow Trend</CardTitle>
+                        <CSVLink data={parsedData} filename="trb246-temperature-flow.csv" className="print:hidden"><Download className="h-4 w-4" /></CSVLink>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <AreaChart data={chartData}>
+                            <defs>
+                              <linearGradient id="temperatureFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor={CHART_COLORS.amber} stopOpacity={0.45} />
+                                <stop offset="100%" stopColor={CHART_COLORS.amber} stopOpacity={0.03} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                            <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                            <YAxis yAxisId="left" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend content={<CustomLegend />} />
+                            <Area yAxisId="left" type="monotone" dataKey="temperatureC" name="Temp (°C)" fill="url(#temperatureFill)" stroke={CHART_COLORS.amber} strokeWidth={2} />
+                            <Line yAxisId="right" type="monotone" dataKey="flowLpm" name="Flow (L/min)" stroke={CHART_COLORS.blue} strokeWidth={2} dot={false} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="flex-row items-center justify-between">
+                        <CardTitle>Voltage, Power & Signal</CardTitle>
+                        <CSVLink data={parsedData} filename="trb246-voltage-power-signal.csv" className="print:hidden"><Download className="h-4 w-4" /></CSVLink>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <LineChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                            <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                            <YAxis tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend content={<CustomLegend />} />
+                            <Line type="monotone" dataKey="voltageV" name="Voltage (V)" stroke={CHART_COLORS.purple} strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="powerW" name="Power (W)" stroke={CHART_COLORS.blue} strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="signalQuality" name="Signal (%)" stroke={CHART_COLORS.green} strokeWidth={2} dot={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                    {hasDigitalHistory && (
+                      <Card className="xl:col-span-2">
+                        <CardHeader><CardTitle>Relay & Alarm State History</CardTitle></CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={240}>
+                            <BarChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                              <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                              <YAxis domain={[0, 1]} ticks={[0, 1]} tickFormatter={(value) => (value === 1 ? "On" : "Off")} tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
+                              <Tooltip content={<CustomTooltip />} />
+                              <Legend content={<CustomLegend />} />
+                              <Bar dataKey="relayStateNumeric" name="Relay" fill={CHART_COLORS.amber} />
+                              <Bar dataKey="alarmStateNumeric" name="Alarm" fill={CHART_COLORS.red} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                ) : (
+                  <NoDecodedValuesState />
+                )}
+              </div>
+              <div className="grid gap-5 xl:grid-cols-[1.4fr_0.6fr]">
                 <Card>
-                  <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle>Temperature and Energy Trend</CardTitle>
-                    {!loading && <CSVLink data={parsedData} filename="temperature-energy.csv"><Download className="h-4 w-4" /></CSVLink>}
+                  <CardHeader>
+                    <CardTitle>Telemetry History</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {loading ? <Skeleton className="h-[300px] w-full" /> : (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <AreaChart data={parsedData}>
-                          <defs>
-                            <linearGradient id="temperatureFill" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor={CHART_COLORS.amber} stopOpacity={0.45} />
-                              <stop offset="100%" stopColor={CHART_COLORS.amber} stopOpacity={0.03} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                          <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
-                          <YAxis tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Legend content={<CustomLegend />} />
-                          <Area type="monotone" dataKey="temperatureC" name="Temperature °C" fill="url(#temperatureFill)" stroke={CHART_COLORS.amber} strokeWidth={2} />
-                          <Line type="monotone" dataKey="energyKwh" name="Energy kWh" stroke={CHART_COLORS.cyan} strokeWidth={2} dot={false} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
+                    {loading ? <Skeleton className="h-[360px] w-full" /> : <DataTable data={[...parsedData].reverse()} columns={columns} searchPlaceholder="Search device, status, or timestamp..." />}
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle>Power, Voltage and Signal</CardTitle>
-                    {!loading && <CSVLink data={parsedData} filename="power-voltage-signal.csv"><Download className="h-4 w-4" /></CSVLink>}
-                  </CardHeader>
+                  <CardHeader><CardTitle>Device Status</CardTitle></CardHeader>
                   <CardContent>
-                    {loading ? <Skeleton className="h-[300px] w-full" /> : (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={parsedData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                          <XAxis dataKey="timeLabel" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
-                          <YAxis yAxisId="left" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
-                          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12, fill: tickColor }} stroke={tickColor} />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Legend content={<CustomLegend />} />
-                          <Line yAxisId="left" type="monotone" dataKey="powerW" name="Power W" stroke={CHART_COLORS.blue} strokeWidth={2} dot={false} />
-                          <Line yAxisId="right" type="monotone" dataKey="voltageV" name="Voltage V" stroke={CHART_COLORS.purple} strokeWidth={2} dot={false} />
-                          <Line yAxisId="right" type="monotone" dataKey="signalQuality" name="Signal %" stroke={CHART_COLORS.green} strokeWidth={2} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
+                    {loading ? (
+                      <div className="space-y-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-4 w-full" />)}</div>
+                    ) : latest ? (
+                      <ul className="space-y-3 text-sm">
+                        <li className="flex items-start gap-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-600" /><span>Latest reading from <strong>{latest.deviceId}</strong> was received {lastReceivedDisplay}.</span></li>
+                        <li className="flex items-start gap-3"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>Decoded status is <strong className="capitalize">{formatStatus(latest.decodedStatus)}</strong> with {latest.decodedCount} decoded register{latest.decodedCount === 1 ? "" : "s"}.</span></li>
+                        <li className="flex items-start gap-3"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span>Relay is <strong>{formatBoolean(latest.relayState)}</strong>; alarm state is <strong>{latest.alarmState === true ? "Alarm" : latest.alarmState === false ? "Normal" : "--"}</strong>.</span></li>
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No device readings are available yet.</p>
                     )}
                   </CardContent>
                 </Card>
               </div>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Telemetry History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loading ? <Skeleton className="h-[360px] w-full" /> : <DataTable data={[...parsedData].reverse()} columns={columns} searchPlaceholder="Search device, status, or timestamp..." />}
-                </CardContent>
-              </Card>
             </div>
             )}
 
@@ -769,7 +1016,7 @@ export default function Dashboard() {
                       <>
                         <p><strong>{operationalStrings}</strong> of <strong>{stringRuntime.length}</strong> configured strings are currently green. <strong>{activeFaults}</strong> strings require attention and <strong>{activeWarnings}</strong> are in warning state.</p>
                         <p>The live simulation maps incoming TRB246 readings to configured plant strings. Healthy telemetry renders green, weak or missing telemetry renders red, and uncertain decoded register states render amber.</p>
-                        <p>Latest gateway snapshot: {latest?.deviceId ?? "no device"} at {latest?.temperatureC?.toFixed(1) ?? "--"} °C, {latestPower.toFixed(1)} W, and {latestSignal}% signal quality.</p>
+                        <p>Latest gateway snapshot: {latest?.deviceId ?? "no device"} received {lastReceivedDisplay}, at {latest?.temperatureC?.toFixed(1) ?? "--"} °C, {latestPower.toFixed(1)} W, and {latestSignal}% signal quality.</p>
                       </>
                     )}
                   </CardContent>
