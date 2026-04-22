@@ -28,6 +28,25 @@ export const ListModbusReadingsQueryParams = zod.object({
     .min(1)
     .max(listModbusReadingsQueryLimitMax)
     .default(listModbusReadingsQueryLimitDefault),
+  deviceId: zod.coerce
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional device identifier to filter readings by a single TRB246 gateway.",
+    ),
+  since: zod
+    .date()
+    .optional()
+    .describe(
+      "Optional ISO-8601 timestamp; only readings received at or after this time are returned.",
+    ),
+  until: zod
+    .date()
+    .optional()
+    .describe(
+      "Optional ISO-8601 timestamp; only readings received at or before this time are returned.",
+    ),
 });
 
 export const ListModbusReadingsResponse = zod.object({

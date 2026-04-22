@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { Router, type IRouter, type Request } from "express";
 import { db, modbusReadingsTable } from "@workspace/db";
 import {
@@ -106,7 +106,15 @@ const authenticateDeviceRequest = (req: Request): AuthResult => {
 };
 
 router.get("/modbus/readings", async (req, res): Promise<void> => {
-  const parsedQuery = ListModbusReadingsQueryParams.safeParse(req.query);
+  const queryInput: Record<string, unknown> = { ...req.query };
+  if (typeof queryInput.since === "string" && queryInput.since.length > 0) {
+    queryInput.since = new Date(queryInput.since);
+  }
+  if (typeof queryInput.until === "string" && queryInput.until.length > 0) {
+    queryInput.until = new Date(queryInput.until);
+  }
+
+  const parsedQuery = ListModbusReadingsQueryParams.safeParse(queryInput);
 
   if (!parsedQuery.success) {
     req.log.warn(
@@ -117,9 +125,21 @@ router.get("/modbus/readings", async (req, res): Promise<void> => {
     return;
   }
 
+  const filters: SQL[] = [];
+  if (parsedQuery.data.deviceId) {
+    filters.push(eq(modbusReadingsTable.deviceId, parsedQuery.data.deviceId));
+  }
+  if (parsedQuery.data.since) {
+    filters.push(gte(modbusReadingsTable.receivedAt, parsedQuery.data.since));
+  }
+  if (parsedQuery.data.until) {
+    filters.push(lte(modbusReadingsTable.receivedAt, parsedQuery.data.until));
+  }
+
   const readings = await db
     .select()
     .from(modbusReadingsTable)
+    .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(modbusReadingsTable.receivedAt))
     .limit(parsedQuery.data.limit);
 

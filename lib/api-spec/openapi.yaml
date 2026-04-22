@@ -41,6 +41,27 @@ paths:
             minimum: 1
             maximum: 100
             default: 25
+        - name: deviceId
+          in: query
+          required: false
+          description: Optional device identifier to filter readings by a single TRB246 gateway.
+          schema:
+            type: string
+            minLength: 1
+        - name: since
+          in: query
+          required: false
+          description: Optional ISO-8601 timestamp; only readings received at or after this time are returned.
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          description: Optional ISO-8601 timestamp; only readings received at or before this time are returned.
+          schema:
+            type: string
+            format: date-time
       responses:
         "200":
           description: Recent readings

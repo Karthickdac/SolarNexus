@@ -575,9 +575,46 @@ export default function Dashboard() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [activeView, setActiveView] = useState("overview");
 
-  const queryParams = { limit: 100 };
+  const [deviceFilter, setDeviceFilter] = useState<string>("all");
+  const [rangeFilter, setRangeFilter] = useState<"hour" | "day" | "week" | "all">("all");
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (rangeFilter === "all") return undefined;
+    const interval = setInterval(() => setNowTick(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, [rangeFilter]);
+
+  const sinceIso = useMemo(() => {
+    if (rangeFilter === "all") return undefined;
+    const ms = rangeFilter === "hour" ? 60 * 60 * 1000 : rangeFilter === "day" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    return new Date(nowTick - ms).toISOString();
+  }, [rangeFilter, nowTick]);
+
+  const queryParams = useMemo(
+    () => ({
+      limit: 100,
+      ...(deviceFilter !== "all" ? { deviceId: deviceFilter } : {}),
+      ...(sinceIso ? { since: sinceIso } : {}),
+    }),
+    [deviceFilter, sinceIso],
+  );
+  const { data: deviceListData } = useListModbusReadings({ limit: 100 });
   const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(queryParams);
   const loading = isLoading || isFetching;
+
+  const knownDeviceIds = useMemo(() => {
+    const set = new Set<string>();
+    (deviceListData?.readings ?? []).forEach((reading) => set.add(reading.deviceId));
+    (data?.readings ?? []).forEach((reading) => set.add(reading.deviceId));
+    return Array.from(set).sort();
+  }, [deviceListData, data]);
+
+  useEffect(() => {
+    if (deviceFilter !== "all" && knownDeviceIds.length > 0 && !knownDeviceIds.includes(deviceFilter)) {
+      setDeviceFilter("all");
+    }
+  }, [deviceFilter, knownDeviceIds]);
 
   const { users, currentUser, currentUserId, setCurrentUserId, addUser, updateUser, deleteUser } = useUsers();
   const allowedSiteIds = currentUser?.role === "super-admin" ? ("all" as const) : (currentUser?.siteIds ?? []);
@@ -620,7 +657,7 @@ export default function Dashboard() {
       queryClient.invalidateQueries({ queryKey: getListModbusReadingsQueryKey(queryParams) });
     }, autoRefreshInterval);
     return () => clearInterval(interval);
-  }, [autoRefreshInterval, queryClient]);
+  }, [autoRefreshInterval, queryClient, queryParams]);
 
   const rawReadings = data?.readings ?? [];
 
@@ -840,6 +877,54 @@ export default function Dashboard() {
           </header>
 
           <div className="space-y-5">
+            <Card className="print:hidden">
+              <CardContent className="flex flex-wrap items-end gap-4 px-5 py-4">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="device-filter" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Device
+                  </label>
+                  <select
+                    id="device-filter"
+                    className="h-9 min-w-[200px] rounded-md border bg-background px-2 text-sm"
+                    value={deviceFilter}
+                    onChange={(event) => setDeviceFilter(event.target.value)}
+                  >
+                    <option value="all">All devices ({knownDeviceIds.length})</option>
+                    {knownDeviceIds.map((id) => (
+                      <option key={id} value={id}>{id}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Time range</span>
+                  <div className="flex flex-wrap gap-1 rounded-md border bg-background p-1">
+                    {([
+                      { id: "hour", label: "Last hour" },
+                      { id: "day", label: "Last 24h" },
+                      { id: "week", label: "Last week" },
+                      { id: "all", label: "All time" },
+                    ] as const).map((option) => (
+                      <Button
+                        key={option.id}
+                        type="button"
+                        variant={rangeFilter === option.id ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => setRangeFilter(option.id)}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="ml-auto text-xs text-muted-foreground">
+                  Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
+                  {deviceFilter !== "all" ? <> for <span className="font-mono text-foreground">{deviceFilter}</span></> : null}
+                  {rangeFilter !== "all" ? <> in the {rangeFilter === "hour" ? "last hour" : rangeFilter === "day" ? "last 24 hours" : "last week"}</> : null}
+                  .
+                </div>
+              </CardContent>
+            </Card>
+
             {isError && (
               <Card className="border-destructive/40">
                 <CardContent className="flex items-start gap-3 px-6 py-5">

@@ -12,4 +12,17 @@ export type ListModbusReadingsParams = {
    * @maximum 100
    */
   limit?: number;
+  /**
+   * Optional device identifier to filter readings by a single TRB246 gateway.
+   * @minLength 1
+   */
+  deviceId?: string;
+  /**
+   * Optional ISO-8601 timestamp; only readings received at or after this time are returned.
+   */
+  since?: Date;
+  /**
+   * Optional ISO-8601 timestamp; only readings received at or before this time are returned.
+   */
+  until?: Date;
 };
