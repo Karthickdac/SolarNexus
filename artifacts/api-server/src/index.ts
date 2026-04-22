@@ -41,7 +41,7 @@ if (hasPreviousToken) {
 
 if (!isLocalRuntime && !process.env.ADMIN_API_TOKEN?.trim()) {
   logger.warn(
-    "ADMIN_API_TOKEN is not configured. Alert preference and dispatch endpoints (/api/alerts/preferences PUT, /api/alerts/test, /api/alerts/evaluate) are unauthenticated and SHOULD NOT be exposed to untrusted networks until this is set.",
+    "ADMIN_API_TOKEN is not configured in a non-local runtime. The admin alert endpoints (PUT /api/alerts/preferences, POST /api/alerts/test, POST /api/alerts/evaluate) will respond with HTTP 503 (fail-closed) until the secret is set. Configure ADMIN_API_TOKEN to enable alert administration in this deployment.",
   );
 }
 

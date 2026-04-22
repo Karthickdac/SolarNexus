@@ -26,9 +26,11 @@ export const requireAdminAuth = (
   const expected = process.env[ADMIN_TOKEN_ENV]?.trim();
   if (!expected) {
     if (isLocalRuntime()) {
-      // In local development we allow these endpoints without a token so the
-      // dashboard works out of the box. We mark the response so it's
-      // obvious the gate is open.
+      // In local development (NODE_ENV=development|test) we allow these
+      // endpoints without a token so the dashboard works out of the box.
+      // The response carries `x-admin-auth: disabled` so it's obvious the
+      // gate is open and so dashboard tooling can show a banner. In any
+      // other runtime we fail closed below.
       res.setHeader("x-admin-auth", "disabled");
       return next();
     }
