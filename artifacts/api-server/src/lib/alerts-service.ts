@@ -356,10 +356,21 @@ export const evaluateAndDispatch = async (now = new Date()) => {
 };
 
 let timer: NodeJS.Timeout | null = null;
+let tickInFlight = false;
 
 export const startStalenessMonitor = (intervalMs = 60_000) => {
   if (timer) return;
   const tick = async () => {
+    // Single-flight guard: if a previous tick is still running (slow webhook
+    // calls, DB stalls, etc.) skip this interval rather than overlapping it,
+    // which could otherwise race the per-device cooldown lookup.
+    if (tickInFlight) {
+      logger.warn(
+        "Staleness monitor tick skipped because the previous tick is still running.",
+      );
+      return;
+    }
+    tickInFlight = true;
     try {
       const result = await evaluateAndDispatch();
       if (result.dispatched > 0) {
@@ -370,6 +381,8 @@ export const startStalenessMonitor = (intervalMs = 60_000) => {
       }
     } catch (err) {
       logger.error({ err }, "Staleness monitor tick failed");
+    } finally {
+      tickInFlight = false;
     }
   };
   timer = setInterval(tick, intervalMs);
