@@ -15,6 +15,9 @@ const extractBearer = (header: string | undefined) => {
   return scheme?.toLowerCase() === "bearer" && token ? token.trim() : null;
 };
 
+const isLocalRuntime = () =>
+  process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+
 export const requireAdminAuth = (
   req: Request,
   res: Response,
@@ -22,11 +25,20 @@ export const requireAdminAuth = (
 ) => {
   const expected = process.env[ADMIN_TOKEN_ENV]?.trim();
   if (!expected) {
-    // No admin token configured: allow access in this build but signal in
-    // response headers so operators can spot the gap. The startup warning in
-    // index.ts also flags this.
-    res.setHeader("x-admin-auth", "disabled");
-    return next();
+    if (isLocalRuntime()) {
+      // In local development we allow these endpoints without a token so the
+      // dashboard works out of the box. We mark the response so it's
+      // obvious the gate is open.
+      res.setHeader("x-admin-auth", "disabled");
+      return next();
+    }
+    // Fail closed in non-local runtimes: refuse to mutate alerting
+    // configuration when the operator has not configured ADMIN_API_TOKEN.
+    res.status(503).json({
+      error:
+        "Admin endpoint unavailable: ADMIN_API_TOKEN is not configured on the server.",
+    });
+    return;
   }
   const provided =
     req.get("x-admin-token")?.trim() || extractBearer(req.get("authorization"));
