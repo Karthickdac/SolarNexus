@@ -51,6 +51,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/trb246-dashboard/src/config/site-blueprint.ts` drives the enterprise plant simulation. Replace this file per client site to map zones, inverters, strings, positions, gateway IDs, MPPT labels, expected output, and live status thresholds.
 - The plant console now includes sidebar navigation, overview/simulation/analytics/report/config views, and a visual blueprint simulation where strings/inverters render green for healthy telemetry, amber for review states, and red for stale, missing, invalid, weak, or low-output telemetry.
 - Dashboard metric mapping is centralized in `artifacts/trb246-dashboard/src/pages/dashboard.tsx` as `METRIC_DEFINITIONS`, covering provided value aliases, decoded register names, and fallback register addresses.
+- The dashboard exposes a configurable "Warn when stale after" threshold (default 30 minutes, persisted in `localStorage` under `solarnexus.staleness-threshold-minutes.v1`). When a device's most recent payload exceeds this threshold its string status drops from healthy to warning (amber) and a banner lists the silent devices; if the gap exceeds 3× the threshold the status escalates to fault (red). The threshold control and explanation are surfaced in the dashboard filter card.
 
 ## Configuration
 

@@ -292,7 +292,11 @@ function statusColor(status: StatusLevel): string {
   return CHART_COLORS.red;
 }
 
-function evaluateStringStatus(string: BlueprintString, reading: ParsedReading | null): Omit<StringRuntime, "string"> {
+function evaluateStringStatus(
+  string: BlueprintString,
+  reading: ParsedReading | null,
+  stalenessThresholdMinutes: number,
+): Omit<StringRuntime, "string"> {
   if (!reading) {
     return {
       reading: null,
@@ -309,16 +313,31 @@ function evaluateStringStatus(string: BlueprintString, reading: ParsedReading | 
   const powerW = reading.powerW;
   const signalQuality = reading.signalQuality;
   const decodedHasInvalid = reading.decodedStatus === "contains_invalid_registers";
-  const stale = minutesSinceData > 30;
+  const stale = minutesSinceData > stalenessThresholdMinutes;
+  const severelyStale = minutesSinceData > stalenessThresholdMinutes * 3;
   const weakSignal = signalQuality !== null && signalQuality < 60;
   const lowPower = powerW !== null && powerW < string.expectedPowerW * 0.35;
 
-  if (stale || decodedHasInvalid || weakSignal || lowPower) {
+  if (severelyStale || decodedHasInvalid || weakSignal || lowPower) {
     return {
       reading,
       status: "fault",
-      statusLabel: stale ? "Stale data" : weakSignal ? "Weak signal" : lowPower ? "Low output" : "Invalid register",
+      statusLabel: severelyStale
+        ? `No data for ${minutesSinceData} min`
+        : weakSignal ? "Weak signal" : lowPower ? "Low output" : "Invalid register",
       color: CHART_COLORS.red,
+      minutesSinceData,
+      powerW,
+      signalQuality,
+    };
+  }
+
+  if (stale) {
+    return {
+      reading,
+      status: "warning",
+      statusLabel: `Stale data (${minutesSinceData} min)`,
+      color: CHART_COLORS.amber,
       minutesSinceData,
       powerW,
       signalQuality,
@@ -578,12 +597,23 @@ export default function Dashboard() {
   const [deviceFilter, setDeviceFilter] = useState<string>("all");
   const [rangeFilter, setRangeFilter] = useState<"hour" | "day" | "week" | "all">("all");
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [stalenessThresholdMinutes, setStalenessThresholdMinutesState] = useState<number>(() => {
+    if (typeof window === "undefined") return 30;
+    const raw = window.localStorage.getItem("solarnexus.staleness-threshold-minutes.v1");
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+  });
+  const setStalenessThresholdMinutes = (value: number) => {
+    setStalenessThresholdMinutesState(value);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("solarnexus.staleness-threshold-minutes.v1", String(value));
+    }
+  };
 
   useEffect(() => {
-    if (rangeFilter === "all") return undefined;
     const interval = setInterval(() => setNowTick(Date.now()), 60_000);
     return () => clearInterval(interval);
-  }, [rangeFilter]);
+  }, []);
 
   const sinceIso = useMemo(() => {
     if (rangeFilter === "all") return undefined;
@@ -698,11 +728,34 @@ export default function Dashboard() {
   }, [parsedData]);
 
   const stringRuntime = useMemo<StringRuntime[]>(() => {
+    void nowTick;
     return siteBlueprint.strings.map((string) => ({
       string,
-      ...evaluateStringStatus(string, latestByDevice.get(string.deviceId) ?? null),
+      ...evaluateStringStatus(string, latestByDevice.get(string.deviceId) ?? null, stalenessThresholdMinutes),
     }));
-  }, [latestByDevice, siteBlueprint]);
+  }, [latestByDevice, siteBlueprint, stalenessThresholdMinutes, nowTick]);
+
+  const minutesSinceLatest = useMemo(() => {
+    void nowTick;
+    if (!latestByDevice.size) return null;
+    const newest = Math.max(
+      ...Array.from(latestByDevice.values()).map((reading) => new Date(reading.receivedAt).getTime()),
+    );
+    if (!Number.isFinite(newest)) return null;
+    return Math.max(0, Math.round((Date.now() - newest) / 60_000));
+  }, [latestByDevice, nowTick]);
+
+  const staleDevices = useMemo(() => {
+    void nowTick;
+    const now = Date.now();
+    return Array.from(latestByDevice.entries())
+      .map(([deviceId, reading]) => ({
+        deviceId,
+        minutes: Math.max(0, Math.round((now - new Date(reading.receivedAt).getTime()) / 60_000)),
+      }))
+      .filter((entry) => entry.minutes > stalenessThresholdMinutes)
+      .sort((a, b) => b.minutes - a.minutes);
+  }, [latestByDevice, stalenessThresholdMinutes, nowTick]);
 
   const latest = parsedData.at(-1) ?? null;
   const previous = parsedData.slice(0, -1);
@@ -711,6 +764,7 @@ export default function Dashboard() {
   const lastReceivedDisplay = validLatestReceivedDate
     ? `${formatDistanceToNow(validLatestReceivedDate, { addSuffix: true })} (${format(validLatestReceivedDate, "MMM dd, yyyy HH:mm:ss")})`
     : "No readings yet";
+  const latestIsStale = minutesSinceLatest !== null && minutesSinceLatest > stalenessThresholdMinutes;
   const avgTemp = previous.filter((item) => item.temperatureC !== null).reduce((acc, item, _, array) => acc + (item.temperatureC ?? 0) / array.length, 0);
   const tempDiff = latest?.temperatureC !== null && latest?.temperatureC !== undefined && avgTemp ? latest.temperatureC - avgTemp : 0;
   const latestPower = latest?.powerW ?? 0;
@@ -855,7 +909,10 @@ export default function Dashboard() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Blueprint-driven simulation, live string status tracking, and Modbus telemetry reporting.
               </p>
-              <p className="mt-2 font-mono text-xs text-muted-foreground">Last received: {lastReceivedDisplay}</p>
+              <p className={`mt-2 font-mono text-xs ${latestIsStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                Last received: {lastReceivedDisplay}
+                {latestIsStale ? ` — exceeds ${stalenessThresholdMinutes} min staleness threshold` : ""}
+              </p>
               <p className="mt-1 font-mono text-xs text-muted-foreground">Dashboard refresh: {lastRefreshed}</p>
             </div>
             <div className="flex items-center gap-2 print:hidden">
@@ -916,6 +973,24 @@ export default function Dashboard() {
                     ))}
                   </div>
                 </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="staleness-threshold" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Warn when stale after
+                  </label>
+                  <select
+                    id="staleness-threshold"
+                    className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
+                    value={stalenessThresholdMinutes}
+                    onChange={(event) => setStalenessThresholdMinutes(Number(event.target.value))}
+                  >
+                    {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] text-muted-foreground">Devices warn when no payload arrives for this long; faulted at 3×.</span>
+                </div>
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
                   {deviceFilter !== "all" ? <> for <span className="font-mono text-foreground">{deviceFilter}</span></> : null}
@@ -932,6 +1007,35 @@ export default function Dashboard() {
                   <div>
                     <h2 className="font-semibold text-foreground">Unable to load Modbus readings</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "The readings API returned an error."}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!loading && staleDevices.length > 0 && (
+              <Card className="border-amber-500/50 bg-amber-500/5">
+                <CardContent className="flex items-start gap-3 px-6 py-5">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-semibold text-foreground">
+                      {staleDevices.length === 1 ? "1 device" : `${staleDevices.length} devices`} stopped sending data
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      No payloads received within the configured staleness threshold of {stalenessThresholdMinutes} minute{stalenessThresholdMinutes === 1 ? "" : "s"}. Adjust the threshold above if this is expected.
+                    </p>
+                    <ul className="mt-3 space-y-1 text-sm">
+                      {staleDevices.slice(0, 5).map((entry) => (
+                        <li key={entry.deviceId} className="flex items-center justify-between gap-3 rounded-md bg-background/60 px-3 py-1.5">
+                          <span className="font-mono text-xs">{entry.deviceId}</span>
+                          <span className="text-xs text-amber-700 dark:text-amber-300">
+                            silent for {entry.minutes} min
+                          </span>
+                        </li>
+                      ))}
+                      {staleDevices.length > 5 && (
+                        <li className="text-xs text-muted-foreground">…and {staleDevices.length - 5} more</li>
+                      )}
+                    </ul>
                   </div>
                 </CardContent>
               </Card>
