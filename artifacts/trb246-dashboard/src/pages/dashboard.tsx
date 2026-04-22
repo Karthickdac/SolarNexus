@@ -676,9 +676,13 @@ export default function Dashboard() {
     }),
     [deviceFilter, sinceIso, untilIso],
   );
+  const queryEnabled = !(rangeFilter === "custom" && customRangeError !== null);
   const { data: deviceListData } = useListModbusReadings({ limit: 100 });
-  const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(queryParams);
-  const loading = isLoading || isFetching;
+  const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(
+    queryParams,
+    { query: { enabled: queryEnabled, placeholderData: queryEnabled ? undefined : { readings: [] } } },
+  );
+  const loading = queryEnabled && (isLoading || isFetching);
 
   const knownDeviceIds = useMemo(() => {
     const set = new Set<string>();
