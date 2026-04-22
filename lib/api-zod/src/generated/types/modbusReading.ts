@@ -7,6 +7,7 @@
  */
 import type { ModbusDecodedValues } from "./modbusDecodedValues";
 import type { ModbusReadingRawPayload } from "./modbusReadingRawPayload";
+import type { ModbusReadingTokenSlot } from "./modbusReadingTokenSlot";
 
 export interface ModbusReading {
   id: number;
@@ -14,6 +15,11 @@ export interface ModbusReading {
   /** @nullable */
   source: string | null;
   parsingStatus: string;
+  /**
+   * Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.
+   * @nullable
+   */
+  tokenSlot: ModbusReadingTokenSlot;
   rawPayload: ModbusReadingRawPayload;
   decodedValues: ModbusDecodedValues;
   receivedAt: Date;

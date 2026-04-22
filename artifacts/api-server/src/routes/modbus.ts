@@ -135,6 +135,9 @@ router.get("/modbus/readings", async (req, res): Promise<void> => {
   if (parsedQuery.data.until) {
     filters.push(lte(modbusReadingsTable.receivedAt, parsedQuery.data.until));
   }
+  if (parsedQuery.data.tokenSlot) {
+    filters.push(eq(modbusReadingsTable.tokenSlot, parsedQuery.data.tokenSlot));
+  }
 
   const readings = await db
     .select()
@@ -204,6 +207,7 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
       deviceId,
       source: getSource(req),
       parsingStatus: "accepted",
+      tokenSlot: authResult.slot,
       rawPayload,
       decodedValues,
     })

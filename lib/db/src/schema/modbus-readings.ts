@@ -24,11 +24,14 @@ export type ModbusDecodedValues = {
   providedValues: Record<string, unknown>;
 };
 
+export type ModbusTokenSlot = "current" | "previous";
+
 export const modbusReadingsTable = pgTable("modbus_readings", {
   id: serial("id").primaryKey(),
   deviceId: text("device_id").notNull(),
   source: text("source"),
   parsingStatus: text("parsing_status").notNull().default("accepted"),
+  tokenSlot: text("token_slot").$type<ModbusTokenSlot>(),
   rawPayload: jsonb("raw_payload").$type<ModbusRawPayload>().notNull(),
   decodedValues: jsonb("decoded_values")
     .$type<ModbusDecodedValues>()

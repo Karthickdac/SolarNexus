@@ -47,6 +47,12 @@ export const ListModbusReadingsQueryParams = zod.object({
     .describe(
       "Optional ISO-8601 timestamp; only readings received at or before this time are returned.",
     ),
+  tokenSlot: zod
+    .enum(["current", "previous"])
+    .optional()
+    .describe(
+      'Filter readings by which device token slot authenticated them (\"current\" or \"previous\"). Useful for spotting devices still using the old token during rotation.',
+    ),
 });
 
 export const ListModbusReadingsResponse = zod.object({
@@ -56,6 +62,16 @@ export const ListModbusReadingsResponse = zod.object({
       deviceId: zod.string(),
       source: zod.string().nullable(),
       parsingStatus: zod.string(),
+      tokenSlot: zod
+        .union([
+          zod.literal("current"),
+          zod.literal("previous"),
+          zod.literal(null),
+        ])
+        .nullable()
+        .describe(
+          "Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.",
+        ),
       rawPayload: zod.record(zod.string(), zod.unknown()),
       decodedValues: zod.object({
         status: zod.enum([
@@ -133,6 +149,16 @@ export const CreateModbusReadingResponse = zod.object({
     deviceId: zod.string(),
     source: zod.string().nullable(),
     parsingStatus: zod.string(),
+    tokenSlot: zod
+      .union([
+        zod.literal("current"),
+        zod.literal("previous"),
+        zod.literal(null),
+      ])
+      .nullable()
+      .describe(
+        "Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.",
+      ),
     rawPayload: zod.record(zod.string(), zod.unknown()),
     decodedValues: zod.object({
       status: zod.enum([

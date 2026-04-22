@@ -64,6 +64,15 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: tokenSlot
+          in: query
+          required: false
+          description: Filter readings by which device token slot authenticated them ("current" or "previous"). Useful for spotting devices still using the old token during rotation.
+          schema:
+            type: string
+            enum:
+              - current
+              - previous
       responses:
         "200":
           description: Recent readings
@@ -264,6 +273,13 @@ components:
           type: ["string", "null"]
         parsingStatus:
           type: string
+        tokenSlot:
+          type: ["string", "null"]
+          enum:
+            - current
+            - previous
+            - null
+          description: Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.
         rawPayload:
           type: object
           additionalProperties: true
@@ -277,6 +293,7 @@ components:
         - deviceId
         - source
         - parsingStatus
+        - tokenSlot
         - rawPayload
         - decodedValues
         - receivedAt

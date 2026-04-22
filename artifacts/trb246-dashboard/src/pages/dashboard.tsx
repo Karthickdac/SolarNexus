@@ -143,6 +143,7 @@ type ParsedReading = {
   id: number;
   deviceId: string;
   source: string | null;
+  tokenSlot: "current" | "previous" | null;
   receivedAt: string;
   timeLabel: string;
   dateLabel: string;
@@ -702,6 +703,7 @@ export default function Dashboard() {
         id: reading.id,
         deviceId: reading.deviceId,
         source: reading.source,
+        tokenSlot: reading.tokenSlot ?? null,
         receivedAt: reading.receivedAt,
         timeLabel: safeFormatDate(reading.receivedAt, "HH:mm:ss"),
         dateLabel: safeFormatDate(reading.receivedAt, "MMM dd, HH:mm"),
@@ -745,6 +747,19 @@ export default function Dashboard() {
     );
     if (!Number.isFinite(newest)) return null;
     return Math.max(0, Math.round((Date.now() - newest) / 60_000));
+  }, [latestByDevice, nowTick]);
+
+  const previousTokenDevices = useMemo(() => {
+    void nowTick;
+    const now = Date.now();
+    return Array.from(latestByDevice.entries())
+      .filter(([, reading]) => reading.tokenSlot === "previous")
+      .map(([deviceId, reading]) => ({
+        deviceId,
+        lastSeen: reading.receivedAt,
+        minutesAgo: Math.max(0, Math.round((now - new Date(reading.receivedAt).getTime()) / 60_000)),
+      }))
+      .sort((a, b) => a.deviceId.localeCompare(b.deviceId));
   }, [latestByDevice, nowTick]);
 
   const staleDevices = useMemo(() => {
@@ -1011,6 +1026,35 @@ export default function Dashboard() {
                   <div>
                     <h2 className="font-semibold text-foreground">Unable to load Modbus readings</h2>
                     <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "The readings API returned an error."}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {!loading && previousTokenDevices.length > 0 && (
+              <Card className="border-amber-500/50 bg-amber-500/5">
+                <CardContent className="flex items-start gap-3 px-6 py-5">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-semibold text-foreground">
+                      {previousTokenDevices.length === 1 ? "1 device" : `${previousTokenDevices.length} devices`} still on the previous device token
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Each device's most recent reading was authenticated by a token in <span className="font-mono">MODBUS_INGEST_TOKEN_PREVIOUS</span>. Migrate these devices to the current <span className="font-mono">MODBUS_INGEST_TOKEN</span> before retiring the previous token.
+                    </p>
+                    <ul className="mt-3 space-y-1 text-sm">
+                      {previousTokenDevices.slice(0, 5).map((entry) => (
+                        <li key={entry.deviceId} className="flex items-center justify-between gap-3 rounded-md bg-background/60 px-3 py-1.5">
+                          <span className="font-mono text-xs">{entry.deviceId}</span>
+                          <span className="text-xs text-amber-700 dark:text-amber-300">
+                            previous token used {entry.minutesAgo} min ago
+                          </span>
+                        </li>
+                      ))}
+                      {previousTokenDevices.length > 5 && (
+                        <li className="text-xs text-muted-foreground">…and {previousTokenDevices.length - 5} more</li>
+                      )}
+                    </ul>
                   </div>
                 </CardContent>
               </Card>

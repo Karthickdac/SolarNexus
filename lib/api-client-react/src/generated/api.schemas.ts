@@ -35,6 +35,19 @@ export interface ModbusReadingIngestBody {
   [key: string]: unknown;
 }
 
+/**
+ * Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.
+ * @nullable
+ */
+export type ModbusReadingTokenSlot =
+  | (typeof ModbusReadingTokenSlot)[keyof typeof ModbusReadingTokenSlot]
+  | null;
+
+export const ModbusReadingTokenSlot = {
+  current: "current",
+  previous: "previous",
+} as const;
+
 export type ModbusReadingRawPayload = { [key: string]: unknown };
 
 export type ModbusDecodedValuesStatus =
@@ -83,6 +96,11 @@ export interface ModbusReading {
   /** @nullable */
   source: string | null;
   parsingStatus: string;
+  /**
+   * Which shared device token authenticated this reading. Null for readings ingested before token-slot tracking was added.
+   * @nullable
+   */
+  tokenSlot: ModbusReadingTokenSlot;
   rawPayload: ModbusReadingRawPayload;
   decodedValues: ModbusDecodedValues;
   receivedAt: string;
@@ -234,7 +252,19 @@ export type ListModbusReadingsParams = {
    * Optional ISO-8601 timestamp; only readings received at or before this time are returned.
    */
   until?: string;
+  /**
+   * Filter readings by which device token slot authenticated them ("current" or "previous"). Useful for spotting devices still using the old token during rotation.
+   */
+  tokenSlot?: ListModbusReadingsTokenSlot;
 };
+
+export type ListModbusReadingsTokenSlot =
+  (typeof ListModbusReadingsTokenSlot)[keyof typeof ListModbusReadingsTokenSlot];
+
+export const ListModbusReadingsTokenSlot = {
+  current: "current",
+  previous: "previous",
+} as const;
 
 export type ListAlertEventsParams = {
   /**

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ListModbusReadingsTokenSlot } from "./listModbusReadingsTokenSlot";
 
 export type ListModbusReadingsParams = {
   /**
@@ -25,4 +26,8 @@ export type ListModbusReadingsParams = {
    * Optional ISO-8601 timestamp; only readings received at or before this time are returned.
    */
   until?: Date;
+  /**
+   * Filter readings by which device token slot authenticated them ("current" or "previous"). Useful for spotting devices still using the old token during rotation.
+   */
+  tokenSlot?: ListModbusReadingsTokenSlot;
 };
