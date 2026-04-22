@@ -27,6 +27,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `pnpm --filter @workspace/api-server run test:decoder` — run Modbus decoder unit coverage
 - `pnpm --filter @workspace/api-server run test:ingestion` — verify Modbus ingestion through the running API
 - `pnpm --filter @workspace/trb246-dashboard run dev` — run the TRB246 dashboard locally
+- `pnpm --filter @workspace/trb246-dashboard run test` — run the dashboard state tests (Vitest + React Testing Library, jsdom)
 
 ## Artifacts
 
