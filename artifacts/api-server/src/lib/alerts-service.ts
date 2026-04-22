@@ -1,7 +1,8 @@
-import { desc, gte, inArray, sql } from "drizzle-orm";
+import { desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   db,
   deviceAlertEventsTable,
+  deviceSiteAssignmentsTable,
   modbusReadingsTable,
   notificationSettingsTable,
   DEFAULT_CHANNEL_CONFIG,
@@ -31,6 +32,7 @@ const siteScope = (siteId: string) => `${SITE_SCOPE_PREFIX}${siteId}`;
 export type SiteThreshold = {
   siteId: string;
   thresholdMinutes: number;
+  cooldownMinutes: number;
   updatedAt: Date;
 };
 
@@ -54,6 +56,7 @@ export const listSiteThresholds = async (): Promise<SiteThreshold[]> => {
     result.push({
       siteId,
       thresholdMinutes: row.thresholdMinutes,
+      cooldownMinutes: row.cooldownMinutes,
       updatedAt: row.updatedAt,
     });
   }
@@ -63,6 +66,7 @@ export const listSiteThresholds = async (): Promise<SiteThreshold[]> => {
 export const upsertSiteThreshold = async (
   siteId: string,
   thresholdMinutes: number,
+  cooldownMinutes?: number,
 ): Promise<SiteThreshold> => {
   if (!isValidSiteId(siteId)) {
     throw new Error("Invalid siteId");
@@ -71,26 +75,125 @@ export const upsertSiteThreshold = async (
   // Seed defaults from global so a brand-new site row inherits sensible
   // channel/cooldown values (the table requires those columns NOT NULL).
   const global = await getOrCreateNotificationSettings();
+  const insertCooldown = cooldownMinutes ?? global.cooldownMinutes;
+  const updateSet: Record<string, unknown> = {
+    thresholdMinutes,
+    updatedAt: new Date(),
+  };
+  if (cooldownMinutes !== undefined) {
+    updateSet["cooldownMinutes"] = cooldownMinutes;
+  }
   const [row] = await db
     .insert(notificationSettingsTable)
     .values({
       scope,
       enabled: global.enabled,
       thresholdMinutes,
-      cooldownMinutes: global.cooldownMinutes,
+      cooldownMinutes: insertCooldown,
       channels: global.channels,
     })
     .onConflictDoUpdate({
       target: notificationSettingsTable.scope,
-      set: { thresholdMinutes, updatedAt: new Date() },
+      set: updateSet,
     })
     .returning();
   if (!row) throw new Error("Failed to upsert site threshold");
   return {
     siteId,
     thresholdMinutes: row.thresholdMinutes,
+    cooldownMinutes: row.cooldownMinutes,
     updatedAt: row.updatedAt,
   };
+};
+
+export type DeviceSiteAssignment = {
+  deviceId: string;
+  siteId: string;
+  updatedAt: Date;
+};
+
+export const listDeviceSiteAssignments = async (): Promise<
+  DeviceSiteAssignment[]
+> => {
+  const rows = await db.select().from(deviceSiteAssignmentsTable);
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    siteId: row.siteId,
+    updatedAt: row.updatedAt,
+  }));
+};
+
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+export const isValidDeviceId = (deviceId: string): boolean =>
+  DEVICE_ID_PATTERN.test(deviceId);
+
+export const replaceSiteDeviceAssignments = async (
+  siteId: string,
+  deviceIds: string[],
+): Promise<DeviceSiteAssignment[]> => {
+  if (!isValidSiteId(siteId)) {
+    throw new Error("Invalid siteId");
+  }
+  const unique = Array.from(new Set(deviceIds.map((d) => d.trim()))).filter(
+    Boolean,
+  );
+  for (const id of unique) {
+    if (!isValidDeviceId(id)) {
+      throw new Error(`Invalid deviceId: ${id}`);
+    }
+  }
+  await db.transaction(async (tx) => {
+    // Drop any existing rows currently assigned to this site that are not
+    // in the new payload, so removed devices stop inheriting the override.
+    await tx
+      .delete(deviceSiteAssignmentsTable)
+      .where(
+        unique.length > 0
+          ? sql`${deviceSiteAssignmentsTable.siteId} = ${siteId} and ${deviceSiteAssignmentsTable.deviceId} not in (${sql.join(
+              unique.map((id) => sql`${id}`),
+              sql`, `,
+            )})`
+          : eq(deviceSiteAssignmentsTable.siteId, siteId),
+      );
+    if (unique.length === 0) return;
+    // Upsert the rest. A device can be moved from site A to site B by simply
+    // PUTting it to site B — the deviceId primary key keeps the mapping
+    // single-valued.
+    await tx
+      .insert(deviceSiteAssignmentsTable)
+      .values(
+        unique.map((deviceId) => ({
+          deviceId,
+          siteId,
+          updatedAt: new Date(),
+        })),
+      )
+      .onConflictDoUpdate({
+        target: deviceSiteAssignmentsTable.deviceId,
+        set: { siteId, updatedAt: new Date() },
+      });
+  });
+  const rows = await db
+    .select()
+    .from(deviceSiteAssignmentsTable)
+    .where(eq(deviceSiteAssignmentsTable.siteId, siteId));
+  return rows.map((row) => ({
+    deviceId: row.deviceId,
+    siteId: row.siteId,
+    updatedAt: row.updatedAt,
+  }));
+};
+
+export const clearSiteDeviceAssignments = async (
+  siteId: string,
+): Promise<void> => {
+  if (!isValidSiteId(siteId)) {
+    throw new Error("Invalid siteId");
+  }
+  await db
+    .delete(deviceSiteAssignmentsTable)
+    .where(eq(deviceSiteAssignmentsTable.siteId, siteId));
 };
 
 export const deleteSiteThreshold = async (siteId: string): Promise<void> => {
@@ -394,11 +497,43 @@ export const evaluateAndDispatch = async (now = new Date()) => {
   const deviceIds = latest.map((row) => row.deviceId);
   const lastEventByDevice = await getLatestEventPerDevice(deviceIds);
 
-  const thresholdMs = settings.thresholdMinutes * 60_000;
-  const cooldownMs = settings.cooldownMinutes * 60_000;
+  // Build a per-device threshold/cooldown lookup. Devices assigned to a site
+  // with an override use that site's settings; everyone else falls back to
+  // the global defaults so existing behaviour is preserved.
+  const [siteThresholds, assignments] = await Promise.all([
+    listSiteThresholds(),
+    listDeviceSiteAssignments(),
+  ]);
+  const settingsBySite = new Map<
+    string,
+    { thresholdMinutes: number; cooldownMinutes: number }
+  >();
+  for (const t of siteThresholds) {
+    settingsBySite.set(t.siteId, {
+      thresholdMinutes: t.thresholdMinutes,
+      cooldownMinutes: t.cooldownMinutes,
+    });
+  }
+  const siteByDevice = new Map<string, string>();
+  for (const a of assignments) siteByDevice.set(a.deviceId, a.siteId);
+
+  const resolveSettings = (deviceId: string) => {
+    const siteId = siteByDevice.get(deviceId);
+    const siteSettings = siteId ? settingsBySite.get(siteId) : undefined;
+    return {
+      thresholdMinutes:
+        siteSettings?.thresholdMinutes ?? settings.thresholdMinutes,
+      cooldownMinutes:
+        siteSettings?.cooldownMinutes ?? settings.cooldownMinutes,
+    };
+  };
+
   let dispatched = 0;
 
   for (const { deviceId, receivedAt } of latest) {
+    const { thresholdMinutes, cooldownMinutes } = resolveSettings(deviceId);
+    const thresholdMs = thresholdMinutes * 60_000;
+    const cooldownMs = cooldownMinutes * 60_000;
     const ageMs = now.getTime() - new Date(receivedAt).getTime();
     const minutesSinceData = Math.round(ageMs / 60_000);
     const isStale = ageMs > thresholdMs;
@@ -418,7 +553,7 @@ export const evaluateAndDispatch = async (now = new Date()) => {
         deviceId,
         severity,
         minutesSinceData,
-        thresholdMinutes: settings.thresholdMinutes,
+        thresholdMinutes,
         channels,
         trigger: "scheduled",
       });
@@ -428,7 +563,7 @@ export const evaluateAndDispatch = async (now = new Date()) => {
         deviceId,
         severity: "resolved",
         minutesSinceData,
-        thresholdMinutes: settings.thresholdMinutes,
+        thresholdMinutes,
         channels,
         trigger: "scheduled",
       });

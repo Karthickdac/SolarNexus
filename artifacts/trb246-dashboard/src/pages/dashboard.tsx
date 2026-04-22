@@ -39,6 +39,7 @@ import {
   deleteSiteStalenessThreshold,
   getListModbusReadingsQueryKey,
   getListSiteStalenessThresholdsQueryKey,
+  replaceSiteDeviceAssignments,
   upsertSiteStalenessThreshold,
   useListModbusReadings,
   useListSiteStalenessThresholds,
@@ -749,6 +750,54 @@ export default function Dashboard() {
       );
     }
   };
+
+  // Sync device→site mappings to the server so the background staleness
+  // monitor can apply per-site thresholds/cooldowns. The endpoint is
+  // admin-protected, so we skip the sync entirely when the operator hasn't
+  // pasted an admin token (or isn't a super-admin) — otherwise non-admin
+  // sessions would generate a steady stream of 401 console noise.
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    if (!visibleSites || visibleSites.length === 0) return;
+    if (typeof window === "undefined") return;
+    const adminToken = (() => {
+      try {
+        return window.localStorage.getItem("solarnexus.adminApiToken");
+      } catch {
+        return null;
+      }
+    })();
+    if (!adminToken) return;
+    let cancelled = false;
+    const debounce = setTimeout(() => {
+      void (async () => {
+        for (const site of visibleSites) {
+          if (cancelled) return;
+          const deviceIds = Array.from(
+            new Set(
+              [
+                ...site.inverters.map((i) => i.deviceId),
+                ...site.strings.map((s) => s.deviceId),
+              ].filter((id): id is string => typeof id === "string" && id.length > 0),
+            ),
+          );
+          try {
+            await replaceSiteDeviceAssignments(site.id, { deviceIds });
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `Failed to sync device assignments for site ${site.id}:`,
+              err,
+            );
+          }
+        }
+      })();
+    }, 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+    };
+  }, [visibleSites]);
 
   const siteBlueprint: SiteBlueprint = currentSite ?? {
     siteName: "No site",

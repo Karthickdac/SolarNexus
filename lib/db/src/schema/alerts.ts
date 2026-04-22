@@ -74,6 +74,25 @@ export const deviceAlertEventsTable = pgTable("device_alert_events", {
     .defaultNow(),
 });
 
+export const deviceSiteAssignmentsTable = pgTable(
+  "device_site_assignments",
+  {
+    deviceId: text("device_id").primaryKey(),
+    siteId: text("site_id").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    siteIdx: uniqueIndex("device_site_assignments_device_unique").on(
+      table.deviceId,
+    ),
+  }),
+);
+
+export type DeviceSiteAssignment =
+  typeof deviceSiteAssignmentsTable.$inferSelect;
+
 export const insertNotificationSettingsSchema = createInsertSchema(
   notificationSettingsTable,
 ).omit({ id: true, updatedAt: true });

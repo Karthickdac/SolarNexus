@@ -20,6 +20,7 @@ import type {
   AlertTestBody,
   AlertTestResponse,
   DeviceAlertEventsList,
+  DeviceSiteAssignmentsList,
   ErrorResponse,
   EvaluateAlertsResponse,
   HealthStatus,
@@ -29,6 +30,7 @@ import type {
   ModbusReadingIngestBody,
   ModbusReadingsList,
   NotificationPreferencesResponse,
+  SiteDeviceAssignmentsBody,
   SiteThresholdResponse,
   SiteThresholdsList,
   UpdateNotificationPreferencesBody,
@@ -731,6 +733,271 @@ export const useDeleteSiteStalenessThreshold = <
   TContext
 > => {
   return useMutation(getDeleteSiteStalenessThresholdMutationOptions(options));
+};
+
+/**
+ * Returns the device identifiers the server has been told belong to each
+site. The staleness evaluator uses these to apply per-site
+threshold/cooldown overrides; devices without an assignment fall back
+to the global notification settings.
+
+ * @summary List device-to-site assignments
+ */
+export const getListDeviceSiteAssignmentsUrl = () => {
+  return `/api/alerts/site-devices`;
+};
+
+export const listDeviceSiteAssignments = async (
+  options?: RequestInit,
+): Promise<DeviceSiteAssignmentsList> => {
+  return customFetch<DeviceSiteAssignmentsList>(
+    getListDeviceSiteAssignmentsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListDeviceSiteAssignmentsQueryKey = () => {
+  return [`/api/alerts/site-devices`] as const;
+};
+
+export const getListDeviceSiteAssignmentsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listDeviceSiteAssignments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDeviceSiteAssignments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListDeviceSiteAssignmentsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listDeviceSiteAssignments>>
+  > = ({ signal }) => listDeviceSiteAssignments({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listDeviceSiteAssignments>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListDeviceSiteAssignmentsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listDeviceSiteAssignments>>
+>;
+export type ListDeviceSiteAssignmentsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List device-to-site assignments
+ */
+
+export function useListDeviceSiteAssignments<
+  TData = Awaited<ReturnType<typeof listDeviceSiteAssignments>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listDeviceSiteAssignments>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListDeviceSiteAssignmentsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Replaces every device-to-site mapping for the given site. Devices
+previously assigned to this site that are absent from the payload are
+removed. Devices listed here override any prior assignment to a
+different site.
+
+ * @summary Replace the set of devices assigned to a site
+ */
+export const getReplaceSiteDeviceAssignmentsUrl = (siteId: string) => {
+  return `/api/alerts/site-devices/${siteId}`;
+};
+
+export const replaceSiteDeviceAssignments = async (
+  siteId: string,
+  siteDeviceAssignmentsBody: SiteDeviceAssignmentsBody,
+  options?: RequestInit,
+): Promise<DeviceSiteAssignmentsList> => {
+  return customFetch<DeviceSiteAssignmentsList>(
+    getReplaceSiteDeviceAssignmentsUrl(siteId),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(siteDeviceAssignmentsBody),
+    },
+  );
+};
+
+export const getReplaceSiteDeviceAssignmentsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>,
+    TError,
+    { siteId: string; data: BodyType<SiteDeviceAssignmentsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>,
+  TError,
+  { siteId: string; data: BodyType<SiteDeviceAssignmentsBody> },
+  TContext
+> => {
+  const mutationKey = ["replaceSiteDeviceAssignments"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>,
+    { siteId: string; data: BodyType<SiteDeviceAssignmentsBody> }
+  > = (props) => {
+    const { siteId, data } = props ?? {};
+
+    return replaceSiteDeviceAssignments(siteId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplaceSiteDeviceAssignmentsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>
+>;
+export type ReplaceSiteDeviceAssignmentsMutationBody =
+  BodyType<SiteDeviceAssignmentsBody>;
+export type ReplaceSiteDeviceAssignmentsMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Replace the set of devices assigned to a site
+ */
+export const useReplaceSiteDeviceAssignments = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>,
+    TError,
+    { siteId: string; data: BodyType<SiteDeviceAssignmentsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof replaceSiteDeviceAssignments>>,
+  TError,
+  { siteId: string; data: BodyType<SiteDeviceAssignmentsBody> },
+  TContext
+> => {
+  return useMutation(getReplaceSiteDeviceAssignmentsMutationOptions(options));
+};
+
+/**
+ * @summary Remove every device assigned to the site
+ */
+export const getClearSiteDeviceAssignmentsUrl = (siteId: string) => {
+  return `/api/alerts/site-devices/${siteId}`;
+};
+
+export const clearSiteDeviceAssignments = async (
+  siteId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getClearSiteDeviceAssignmentsUrl(siteId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getClearSiteDeviceAssignmentsMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearSiteDeviceAssignments>>,
+    TError,
+    { siteId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof clearSiteDeviceAssignments>>,
+  TError,
+  { siteId: string },
+  TContext
+> => {
+  const mutationKey = ["clearSiteDeviceAssignments"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof clearSiteDeviceAssignments>>,
+    { siteId: string }
+  > = (props) => {
+    const { siteId } = props ?? {};
+
+    return clearSiteDeviceAssignments(siteId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ClearSiteDeviceAssignmentsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof clearSiteDeviceAssignments>>
+>;
+
+export type ClearSiteDeviceAssignmentsMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Remove every device assigned to the site
+ */
+export const useClearSiteDeviceAssignments = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof clearSiteDeviceAssignments>>,
+    TError,
+    { siteId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof clearSiteDeviceAssignments>>,
+  TError,
+  { siteId: string },
+  TContext
+> => {
+  return useMutation(getClearSiteDeviceAssignmentsMutationOptions(options));
 };
 
 /**

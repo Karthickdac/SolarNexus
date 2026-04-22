@@ -1,13 +1,16 @@
 import { Router, type IRouter } from "express";
 import { updateNotificationSettingsSchema } from "@workspace/db";
 import {
+  clearSiteDeviceAssignments,
   deleteSiteThreshold,
   dispatchAlert,
   evaluateAndDispatch,
   getOrCreateNotificationSettings,
   isValidSiteId,
   listAlertEvents,
+  listDeviceSiteAssignments,
   listSiteThresholds,
+  replaceSiteDeviceAssignments,
   updateNotificationSettings,
   upsertSiteThreshold,
 } from "../lib/alerts-service";
@@ -83,6 +86,10 @@ router.put(
       const siteId =
         typeof req.body?.siteId === "string" ? req.body.siteId.trim() : "";
       const thresholdMinutes = Number(req.body?.thresholdMinutes);
+      const cooldownRaw = req.body?.cooldownMinutes;
+      const cooldownProvided =
+        cooldownRaw !== undefined && cooldownRaw !== null;
+      const cooldownMinutes = cooldownProvided ? Number(cooldownRaw) : undefined;
       if (!isValidSiteId(siteId)) {
         res.status(400).json({
           error:
@@ -100,7 +107,22 @@ router.put(
         });
         return;
       }
-      const threshold = await upsertSiteThreshold(siteId, thresholdMinutes);
+      if (
+        cooldownProvided &&
+        (!Number.isInteger(cooldownMinutes) ||
+          (cooldownMinutes as number) < 1 ||
+          (cooldownMinutes as number) > 1440)
+      ) {
+        res.status(400).json({
+          error: "cooldownMinutes must be an integer between 1 and 1440.",
+        });
+        return;
+      }
+      const threshold = await upsertSiteThreshold(
+        siteId,
+        thresholdMinutes,
+        cooldownMinutes,
+      );
       res.json({ threshold });
     } catch (err) {
       next(err);
@@ -120,6 +142,81 @@ router.delete(
         return;
       }
       await deleteSiteThreshold(siteId);
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.get("/alerts/site-devices", async (_req, res, next) => {
+  try {
+    const assignments = await listDeviceSiteAssignments();
+    res.json({ assignments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put(
+  "/alerts/site-devices/:siteId",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      const rawSiteId = req.params["siteId"];
+      const siteId = typeof rawSiteId === "string" ? rawSiteId : "";
+      if (!isValidSiteId(siteId)) {
+        res.status(400).json({ error: "Invalid siteId." });
+        return;
+      }
+      const rawDeviceIds = req.body?.deviceIds;
+      if (!Array.isArray(rawDeviceIds)) {
+        res
+          .status(400)
+          .json({ error: "deviceIds must be an array of strings." });
+        return;
+      }
+      if (!rawDeviceIds.every((id: unknown) => typeof id === "string")) {
+        res.status(400).json({
+          error:
+            "deviceIds must contain only strings; reject arrays with mixed types so removals are explicit.",
+        });
+        return;
+      }
+      const deviceIds = rawDeviceIds as string[];
+      try {
+        const assignments = await replaceSiteDeviceAssignments(
+          siteId,
+          deviceIds,
+        );
+        res.json({ assignments });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to update assignments.";
+        if (message.startsWith("Invalid deviceId")) {
+          res.status(400).json({ error: message });
+          return;
+        }
+        throw err;
+      }
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+router.delete(
+  "/alerts/site-devices/:siteId",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      const rawSiteId = req.params["siteId"];
+      const siteId = typeof rawSiteId === "string" ? rawSiteId : "";
+      if (!isValidSiteId(siteId)) {
+        res.status(400).json({ error: "Invalid siteId." });
+        return;
+      }
+      await clearSiteDeviceAssignments(siteId);
       res.status(204).end();
     } catch (err) {
       next(err);

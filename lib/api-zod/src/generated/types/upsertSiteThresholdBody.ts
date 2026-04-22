@@ -18,4 +18,10 @@ export interface UpsertSiteThresholdBody {
    * @maximum 1440
    */
   thresholdMinutes: number;
+  /**
+   * Optional per-site cooldown override; when omitted the existing site value is preserved (or seeded from the global default for new sites).
+   * @minimum 1
+   * @maximum 1440
+   */
+  cooldownMinutes?: number;
 }

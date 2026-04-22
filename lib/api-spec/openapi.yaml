@@ -218,6 +218,81 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /alerts/site-devices:
+    get:
+      operationId: listDeviceSiteAssignments
+      tags: [alerts]
+      summary: List device-to-site assignments
+      description: |
+        Returns the device identifiers the server has been told belong to each
+        site. The staleness evaluator uses these to apply per-site
+        threshold/cooldown overrides; devices without an assignment fall back
+        to the global notification settings.
+      responses:
+        "200":
+          description: Current device-to-site assignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceSiteAssignmentsList"
+  /alerts/site-devices/{siteId}:
+    put:
+      operationId: replaceSiteDeviceAssignments
+      tags: [alerts]
+      summary: Replace the set of devices assigned to a site
+      description: |
+        Replaces every device-to-site mapping for the given site. Devices
+        previously assigned to this site that are absent from the payload are
+        removed. Devices listed here override any prior assignment to a
+        different site.
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteDeviceAssignmentsBody"
+      responses:
+        "200":
+          description: Updated assignments for this site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceSiteAssignmentsList"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: clearSiteDeviceAssignments
+      tags: [alerts]
+      summary: Remove every device assigned to the site
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        "204":
+          description: Assignments cleared (or never existed)
+        "400":
+          description: Invalid site identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /alerts/events:
     get:
       operationId: listAlertEvents
@@ -587,12 +662,18 @@ components:
           type: integer
           minimum: 1
           maximum: 1440
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Per-site cooldown override used by the staleness evaluator.
         updatedAt:
           type: string
           format: date-time
       required:
         - siteId
         - thresholdMinutes
+        - cooldownMinutes
         - updatedAt
     SiteThresholdsList:
       type: object
@@ -622,9 +703,49 @@ components:
           type: integer
           minimum: 1
           maximum: 1440
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Optional per-site cooldown override; when omitted the existing site value is preserved (or seeded from the global default for new sites).
       required:
         - siteId
         - thresholdMinutes
+    DeviceSiteAssignment:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        siteId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - deviceId
+        - siteId
+        - updatedAt
+    DeviceSiteAssignmentsList:
+      type: object
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceSiteAssignment"
+      required:
+        - assignments
+    SiteDeviceAssignmentsBody:
+      type: object
+      properties:
+        deviceIds:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: Full list of device identifiers belonging to the site. Devices previously assigned to this site that are not in the list are removed.
+      required:
+        - deviceIds
     AlertTestBody:
       type: object
       properties:

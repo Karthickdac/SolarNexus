@@ -13,5 +13,11 @@ export interface SiteThreshold {
    * @maximum 1440
    */
   thresholdMinutes: number;
+  /**
+   * Per-site cooldown override used by the staleness evaluator.
+   * @minimum 1
+   * @maximum 1440
+   */
+  cooldownMinutes: number;
   updatedAt: Date;
 }

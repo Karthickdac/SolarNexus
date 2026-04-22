@@ -280,6 +280,8 @@ notification threshold.
  */
 export const listSiteStalenessThresholdsResponseThresholdsItemThresholdMinutesMax = 1440;
 
+export const listSiteStalenessThresholdsResponseThresholdsItemCooldownMinutesMax = 1440;
+
 export const ListSiteStalenessThresholdsResponse = zod.object({
   thresholds: zod.array(
     zod.object({
@@ -289,6 +291,15 @@ export const ListSiteStalenessThresholdsResponse = zod.object({
         .min(1)
         .max(
           listSiteStalenessThresholdsResponseThresholdsItemThresholdMinutesMax,
+        ),
+      cooldownMinutes: zod
+        .number()
+        .min(1)
+        .max(
+          listSiteStalenessThresholdsResponseThresholdsItemCooldownMinutesMax,
+        )
+        .describe(
+          "Per-site cooldown override used by the staleness evaluator.",
         ),
       updatedAt: zod.coerce.date(),
     }),
@@ -302,6 +313,8 @@ export const upsertSiteStalenessThresholdBodySiteIdMax = 128;
 
 export const upsertSiteStalenessThresholdBodyThresholdMinutesMax = 1440;
 
+export const upsertSiteStalenessThresholdBodyCooldownMinutesMax = 1440;
+
 export const UpsertSiteStalenessThresholdBody = zod.object({
   siteId: zod
     .string()
@@ -312,9 +325,19 @@ export const UpsertSiteStalenessThresholdBody = zod.object({
     .number()
     .min(1)
     .max(upsertSiteStalenessThresholdBodyThresholdMinutesMax),
+  cooldownMinutes: zod
+    .number()
+    .min(1)
+    .max(upsertSiteStalenessThresholdBodyCooldownMinutesMax)
+    .optional()
+    .describe(
+      "Optional per-site cooldown override; when omitted the existing site value is preserved (or seeded from the global default for new sites).",
+    ),
 });
 
 export const upsertSiteStalenessThresholdResponseThresholdThresholdMinutesMax = 1440;
+
+export const upsertSiteStalenessThresholdResponseThresholdCooldownMinutesMax = 1440;
 
 export const UpsertSiteStalenessThresholdResponse = zod.object({
   threshold: zod.object({
@@ -323,6 +346,11 @@ export const UpsertSiteStalenessThresholdResponse = zod.object({
       .number()
       .min(1)
       .max(upsertSiteStalenessThresholdResponseThresholdThresholdMinutesMax),
+    cooldownMinutes: zod
+      .number()
+      .min(1)
+      .max(upsertSiteStalenessThresholdResponseThresholdCooldownMinutesMax)
+      .describe("Per-site cooldown override used by the staleness evaluator."),
     updatedAt: zod.coerce.date(),
   }),
 });
@@ -337,6 +365,75 @@ export const DeleteSiteStalenessThresholdParams = zod.object({
     .string()
     .min(1)
     .max(deleteSiteStalenessThresholdPathSiteIdMax),
+});
+
+/**
+ * Returns the device identifiers the server has been told belong to each
+site. The staleness evaluator uses these to apply per-site
+threshold/cooldown overrides; devices without an assignment fall back
+to the global notification settings.
+
+ * @summary List device-to-site assignments
+ */
+export const ListDeviceSiteAssignmentsResponse = zod.object({
+  assignments: zod.array(
+    zod.object({
+      deviceId: zod.string(),
+      siteId: zod.string(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * Replaces every device-to-site mapping for the given site. Devices
+previously assigned to this site that are absent from the payload are
+removed. Devices listed here override any prior assignment to a
+different site.
+
+ * @summary Replace the set of devices assigned to a site
+ */
+export const replaceSiteDeviceAssignmentsPathSiteIdMax = 128;
+
+export const ReplaceSiteDeviceAssignmentsParams = zod.object({
+  siteId: zod.coerce
+    .string()
+    .min(1)
+    .max(replaceSiteDeviceAssignmentsPathSiteIdMax),
+});
+
+export const replaceSiteDeviceAssignmentsBodyDeviceIdsItemMax = 128;
+
+export const ReplaceSiteDeviceAssignmentsBody = zod.object({
+  deviceIds: zod
+    .array(
+      zod.string().min(1).max(replaceSiteDeviceAssignmentsBodyDeviceIdsItemMax),
+    )
+    .describe(
+      "Full list of device identifiers belonging to the site. Devices previously assigned to this site that are not in the list are removed.",
+    ),
+});
+
+export const ReplaceSiteDeviceAssignmentsResponse = zod.object({
+  assignments: zod.array(
+    zod.object({
+      deviceId: zod.string(),
+      siteId: zod.string(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Remove every device assigned to the site
+ */
+export const clearSiteDeviceAssignmentsPathSiteIdMax = 128;
+
+export const ClearSiteDeviceAssignmentsParams = zod.object({
+  siteId: zod.coerce
+    .string()
+    .min(1)
+    .max(clearSiteDeviceAssignmentsPathSiteIdMax),
 });
 
 /**

@@ -232,6 +232,12 @@ export interface SiteThreshold {
    * @maximum 1440
    */
   thresholdMinutes: number;
+  /**
+   * Per-site cooldown override used by the staleness evaluator.
+   * @minimum 1
+   * @maximum 1440
+   */
+  cooldownMinutes: number;
   updatedAt: string;
 }
 
@@ -255,6 +261,27 @@ export interface UpsertSiteThresholdBody {
    * @maximum 1440
    */
   thresholdMinutes: number;
+  /**
+   * Optional per-site cooldown override; when omitted the existing site value is preserved (or seeded from the global default for new sites).
+   * @minimum 1
+   * @maximum 1440
+   */
+  cooldownMinutes?: number;
+}
+
+export interface DeviceSiteAssignment {
+  deviceId: string;
+  siteId: string;
+  updatedAt: string;
+}
+
+export interface DeviceSiteAssignmentsList {
+  assignments: DeviceSiteAssignment[];
+}
+
+export interface SiteDeviceAssignmentsBody {
+  /** Full list of device identifiers belonging to the site. Devices previously assigned to this site that are not in the list are removed. */
+  deviceIds: string[];
 }
 
 export interface AlertTestBody {
