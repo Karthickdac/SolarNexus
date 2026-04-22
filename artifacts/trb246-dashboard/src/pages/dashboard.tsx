@@ -598,7 +598,9 @@ export default function Dashboard() {
   const [activeView, setActiveView] = useState("overview");
 
   const [deviceFilter, setDeviceFilter] = useState<string>("all");
-  const [rangeFilter, setRangeFilter] = useState<"hour" | "day" | "week" | "all">("all");
+  const [rangeFilter, setRangeFilter] = useState<"hour" | "day" | "week" | "all" | "custom">("all");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [stalenessThresholdMinutes, setStalenessThresholdMinutesState] = useState<number>(() => {
     if (typeof window === "undefined") return 30;
@@ -618,19 +620,61 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const sinceIso = useMemo(() => {
-    if (rangeFilter === "all") return undefined;
+  const parseLocalDateTime = (value: string): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const customStartDate = useMemo(() => parseLocalDateTime(customStart), [customStart]);
+  const customEndDate = useMemo(() => parseLocalDateTime(customEnd), [customEnd]);
+
+  const customRangeError = useMemo<string | null>(() => {
+    if (rangeFilter !== "custom") return null;
+    if (customStart && !customStartDate) return "Start date is not a valid timestamp.";
+    if (customEnd && !customEndDate) return "End date is not a valid timestamp.";
+    if (customStartDate && customEndDate && customEndDate.getTime() <= customStartDate.getTime()) {
+      return "End must be after start.";
+    }
+    if (!customStartDate && !customEndDate) {
+      return "Pick a start time, an end time, or both.";
+    }
+    return null;
+  }, [rangeFilter, customStart, customEnd, customStartDate, customEndDate]);
+
+  const customRangeNotice = useMemo<string | null>(() => {
+    if (rangeFilter !== "custom" || customRangeError) return null;
+    const now = Date.now();
+    if (customStartDate && customStartDate.getTime() > now) {
+      return "Start is in the future. No readings will match until time catches up.";
+    }
+    if (customEndDate && customEndDate.getTime() > now) {
+      return "End is in the future. Showing all readings up to now.";
+    }
+    return null;
+  }, [rangeFilter, customRangeError, customStartDate, customEndDate]);
+
+  const { sinceIso, untilIso } = useMemo<{ sinceIso?: string; untilIso?: string }>(() => {
+    if (rangeFilter === "all") return {};
+    if (rangeFilter === "custom") {
+      if (customRangeError) return {};
+      return {
+        ...(customStartDate ? { sinceIso: customStartDate.toISOString() } : {}),
+        ...(customEndDate ? { untilIso: customEndDate.toISOString() } : {}),
+      };
+    }
     const ms = rangeFilter === "hour" ? 60 * 60 * 1000 : rangeFilter === "day" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-    return new Date(nowTick - ms).toISOString();
-  }, [rangeFilter, nowTick]);
+    return { sinceIso: new Date(nowTick - ms).toISOString() };
+  }, [rangeFilter, nowTick, customRangeError, customStartDate, customEndDate]);
 
   const queryParams = useMemo(
     () => ({
       limit: 100,
       ...(deviceFilter !== "all" ? { deviceId: deviceFilter } : {}),
       ...(sinceIso ? { since: sinceIso } : {}),
+      ...(untilIso ? { until: untilIso } : {}),
     }),
-    [deviceFilter, sinceIso],
+    [deviceFilter, sinceIso, untilIso],
   );
   const { data: deviceListData } = useListModbusReadings({ limit: 100 });
   const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(queryParams);
@@ -979,18 +1023,79 @@ export default function Dashboard() {
                       { id: "day", label: "Last 24h" },
                       { id: "week", label: "Last week" },
                       { id: "all", label: "All time" },
+                      { id: "custom", label: "Custom" },
                     ] as const).map((option) => (
                       <Button
                         key={option.id}
                         type="button"
                         variant={rangeFilter === option.id ? "default" : "ghost"}
                         size="sm"
-                        onClick={() => setRangeFilter(option.id)}
+                        onClick={() => {
+                          if (option.id === "custom" && rangeFilter !== "custom" && !customStart && !customEnd) {
+                            const now = new Date();
+                            const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+                            const toLocalInput = (date: Date) => {
+                              const offsetMs = date.getTimezoneOffset() * 60_000;
+                              return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+                            };
+                            setCustomStart(toLocalInput(oneHourAgo));
+                            setCustomEnd(toLocalInput(now));
+                          }
+                          setRangeFilter(option.id);
+                        }}
                       >
                         {option.label}
                       </Button>
                     ))}
                   </div>
+                  {rangeFilter === "custom" && (
+                    <div className="mt-2 flex flex-wrap items-end gap-3 rounded-md border bg-background p-3">
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="custom-start" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Start
+                        </label>
+                        <input
+                          id="custom-start"
+                          type="datetime-local"
+                          className="h-9 rounded-md border bg-background px-2 text-sm"
+                          value={customStart}
+                          onChange={(event) => setCustomStart(event.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label htmlFor="custom-end" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          End
+                        </label>
+                        <input
+                          id="custom-end"
+                          type="datetime-local"
+                          className="h-9 rounded-md border bg-background px-2 text-sm"
+                          value={customEnd}
+                          onChange={(event) => setCustomEnd(event.target.value)}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setCustomStart("");
+                          setCustomEnd("");
+                        }}
+                      >
+                        Clear
+                      </Button>
+                      <div className="basis-full">
+                        {customRangeError ? (
+                          <p className="text-xs text-destructive">{customRangeError}</p>
+                        ) : customRangeNotice ? (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">{customRangeNotice}</p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">Times use your local timezone. Leave one side blank for an open-ended window.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1">
                   <label htmlFor="staleness-threshold" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1013,7 +1118,18 @@ export default function Dashboard() {
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
                   {deviceFilter !== "all" ? <> for <span className="font-mono text-foreground">{deviceFilter}</span></> : null}
-                  {rangeFilter !== "all" ? <> in the {rangeFilter === "hour" ? "last hour" : rangeFilter === "day" ? "last 24 hours" : "last week"}</> : null}
+                  {rangeFilter === "hour" ? <> in the last hour</> : null}
+                  {rangeFilter === "day" ? <> in the last 24 hours</> : null}
+                  {rangeFilter === "week" ? <> in the last week</> : null}
+                  {rangeFilter === "custom" && !customRangeError ? (
+                    <>
+                      {" "}between{" "}
+                      <span className="font-mono text-foreground">{customStartDate ? format(customStartDate, "MMM dd, yyyy HH:mm") : "the beginning"}</span>
+                      {" "}and{" "}
+                      <span className="font-mono text-foreground">{customEndDate ? format(customEndDate, "MMM dd, yyyy HH:mm") : "now"}</span>
+                    </>
+                  ) : null}
+                  {rangeFilter === "custom" && customRangeError ? <> — custom range invalid, showing nothing</> : null}
                   .
                 </div>
               </CardContent>
