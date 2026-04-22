@@ -302,10 +302,18 @@ export function AlertsPanel() {
                   className="h-4 w-4"
                 />
                 <div>
-                  <div className="font-semibold">Email</div>
+                  <div className="flex items-center gap-2 font-semibold">
+                    Email
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                      Preview only
+                    </span>
+                  </div>
                   <div className="text-xs text-muted-foreground">
-                    Requires SMTP_HOST configured on the server. Until then the
-                    request is recorded as &quot;skipped&quot; in the event log.
+                    Email delivery is not yet active. SMTP transport ships in a
+                    follow-up; until then dispatch attempts are recorded as
+                    &quot;skipped&quot; in the event log so you can confirm the
+                    pipeline. Use the webhook channel for outbound notifications
+                    today.
                   </div>
                 </div>
               </label>
