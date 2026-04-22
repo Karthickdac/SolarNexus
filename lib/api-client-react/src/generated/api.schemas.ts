@@ -225,6 +225,38 @@ export interface EvaluateAlertsResponse {
   dispatched: number;
 }
 
+export interface SiteThreshold {
+  siteId: string;
+  /**
+   * @minimum 1
+   * @maximum 1440
+   */
+  thresholdMinutes: number;
+  updatedAt: string;
+}
+
+export interface SiteThresholdsList {
+  thresholds: SiteThreshold[];
+}
+
+export interface SiteThresholdResponse {
+  threshold: SiteThreshold;
+}
+
+export interface UpsertSiteThresholdBody {
+  /**
+   * Stable site identifier from the dashboard's site config.
+   * @minLength 1
+   * @maxLength 128
+   */
+  siteId: string;
+  /**
+   * @minimum 1
+   * @maximum 1440
+   */
+  thresholdMinutes: number;
+}
+
 export interface AlertTestBody {
   deviceId?: string;
 }

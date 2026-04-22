@@ -29,7 +29,10 @@ import type {
   ModbusReadingIngestBody,
   ModbusReadingsList,
   NotificationPreferencesResponse,
+  SiteThresholdResponse,
+  SiteThresholdsList,
   UpdateNotificationPreferencesBody,
+  UpsertSiteThresholdBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -471,6 +474,263 @@ export const useUpdateAlertPreferences = <
   TContext
 > => {
   return useMutation(getUpdateAlertPreferencesMutationOptions(options));
+};
+
+/**
+ * Returns the staleness threshold override (in minutes) configured for
+each site. Sites without an override fall back to the global
+notification threshold.
+
+ * @summary List per-site staleness threshold overrides
+ */
+export const getListSiteStalenessThresholdsUrl = () => {
+  return `/api/alerts/site-thresholds`;
+};
+
+export const listSiteStalenessThresholds = async (
+  options?: RequestInit,
+): Promise<SiteThresholdsList> => {
+  return customFetch<SiteThresholdsList>(getListSiteStalenessThresholdsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListSiteStalenessThresholdsQueryKey = () => {
+  return [`/api/alerts/site-thresholds`] as const;
+};
+
+export const getListSiteStalenessThresholdsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listSiteStalenessThresholds>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteStalenessThresholds>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListSiteStalenessThresholdsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listSiteStalenessThresholds>>
+  > = ({ signal }) =>
+    listSiteStalenessThresholds({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteStalenessThresholds>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListSiteStalenessThresholdsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listSiteStalenessThresholds>>
+>;
+export type ListSiteStalenessThresholdsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List per-site staleness threshold overrides
+ */
+
+export function useListSiteStalenessThresholds<
+  TData = Awaited<ReturnType<typeof listSiteStalenessThresholds>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listSiteStalenessThresholds>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListSiteStalenessThresholdsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Set the staleness threshold for a site
+ */
+export const getUpsertSiteStalenessThresholdUrl = () => {
+  return `/api/alerts/site-thresholds`;
+};
+
+export const upsertSiteStalenessThreshold = async (
+  upsertSiteThresholdBody: UpsertSiteThresholdBody,
+  options?: RequestInit,
+): Promise<SiteThresholdResponse> => {
+  return customFetch<SiteThresholdResponse>(
+    getUpsertSiteStalenessThresholdUrl(),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(upsertSiteThresholdBody),
+    },
+  );
+};
+
+export const getUpsertSiteStalenessThresholdMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>,
+    TError,
+    { data: BodyType<UpsertSiteThresholdBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>,
+  TError,
+  { data: BodyType<UpsertSiteThresholdBody> },
+  TContext
+> => {
+  const mutationKey = ["upsertSiteStalenessThreshold"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>,
+    { data: BodyType<UpsertSiteThresholdBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return upsertSiteStalenessThreshold(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpsertSiteStalenessThresholdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>
+>;
+export type UpsertSiteStalenessThresholdMutationBody =
+  BodyType<UpsertSiteThresholdBody>;
+export type UpsertSiteStalenessThresholdMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Set the staleness threshold for a site
+ */
+export const useUpsertSiteStalenessThreshold = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>,
+    TError,
+    { data: BodyType<UpsertSiteThresholdBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof upsertSiteStalenessThreshold>>,
+  TError,
+  { data: BodyType<UpsertSiteThresholdBody> },
+  TContext
+> => {
+  return useMutation(getUpsertSiteStalenessThresholdMutationOptions(options));
+};
+
+/**
+ * @summary Remove the per-site threshold so the site reverts to the global default
+ */
+export const getDeleteSiteStalenessThresholdUrl = (siteId: string) => {
+  return `/api/alerts/site-thresholds/${siteId}`;
+};
+
+export const deleteSiteStalenessThreshold = async (
+  siteId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteSiteStalenessThresholdUrl(siteId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteSiteStalenessThresholdMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>,
+    TError,
+    { siteId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>,
+  TError,
+  { siteId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteSiteStalenessThreshold"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>,
+    { siteId: string }
+  > = (props) => {
+    const { siteId } = props ?? {};
+
+    return deleteSiteStalenessThreshold(siteId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteSiteStalenessThresholdMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>
+>;
+
+export type DeleteSiteStalenessThresholdMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Remove the per-site threshold so the site reverts to the global default
+ */
+export const useDeleteSiteStalenessThreshold = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>,
+    TError,
+    { siteId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteSiteStalenessThreshold>>,
+  TError,
+  { siteId: string },
+  TContext
+> => {
+  return useMutation(getDeleteSiteStalenessThresholdMutationOptions(options));
 };
 
 /**

@@ -39,4 +39,8 @@ export * from "./notificationChannelConfigInApp";
 export * from "./notificationChannelConfigWebhook";
 export * from "./notificationPreferences";
 export * from "./notificationPreferencesResponse";
+export * from "./siteThreshold";
+export * from "./siteThresholdResponse";
+export * from "./siteThresholdsList";
 export * from "./updateNotificationPreferencesBody";
+export * from "./upsertSiteThresholdBody";

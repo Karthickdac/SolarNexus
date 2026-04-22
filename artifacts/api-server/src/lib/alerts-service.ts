@@ -19,6 +19,90 @@ import {
 } from "./webhook-guard";
 
 const GLOBAL_SCOPE = "global";
+const SITE_SCOPE_PREFIX = "site:";
+
+const SITE_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+export const isValidSiteId = (siteId: string): boolean =>
+  SITE_ID_PATTERN.test(siteId);
+
+const siteScope = (siteId: string) => `${SITE_SCOPE_PREFIX}${siteId}`;
+
+export type SiteThreshold = {
+  siteId: string;
+  thresholdMinutes: number;
+  updatedAt: Date;
+};
+
+export const listSiteThresholds = async (): Promise<SiteThreshold[]> => {
+  const rows = await db
+    .select()
+    .from(notificationSettingsTable)
+    .where(
+      sql`${notificationSettingsTable.scope} like ${SITE_SCOPE_PREFIX + "%"}`,
+    );
+  const result: SiteThreshold[] = [];
+  for (const row of rows) {
+    const siteId = row.scope.slice(SITE_SCOPE_PREFIX.length);
+    if (!isValidSiteId(siteId)) {
+      logger.warn(
+        { scope: row.scope },
+        "Skipping notification_settings row with malformed site scope; please clean up manually.",
+      );
+      continue;
+    }
+    result.push({
+      siteId,
+      thresholdMinutes: row.thresholdMinutes,
+      updatedAt: row.updatedAt,
+    });
+  }
+  return result;
+};
+
+export const upsertSiteThreshold = async (
+  siteId: string,
+  thresholdMinutes: number,
+): Promise<SiteThreshold> => {
+  if (!isValidSiteId(siteId)) {
+    throw new Error("Invalid siteId");
+  }
+  const scope = siteScope(siteId);
+  // Seed defaults from global so a brand-new site row inherits sensible
+  // channel/cooldown values (the table requires those columns NOT NULL).
+  const global = await getOrCreateNotificationSettings();
+  const [row] = await db
+    .insert(notificationSettingsTable)
+    .values({
+      scope,
+      enabled: global.enabled,
+      thresholdMinutes,
+      cooldownMinutes: global.cooldownMinutes,
+      channels: global.channels,
+    })
+    .onConflictDoUpdate({
+      target: notificationSettingsTable.scope,
+      set: { thresholdMinutes, updatedAt: new Date() },
+    })
+    .returning();
+  if (!row) throw new Error("Failed to upsert site threshold");
+  return {
+    siteId,
+    thresholdMinutes: row.thresholdMinutes,
+    updatedAt: row.updatedAt,
+  };
+};
+
+export const deleteSiteThreshold = async (siteId: string): Promise<void> => {
+  if (!isValidSiteId(siteId)) {
+    throw new Error("Invalid siteId");
+  }
+  await db
+    .delete(notificationSettingsTable)
+    .where(
+      sql`${notificationSettingsTable.scope} = ${siteScope(siteId)}`,
+    );
+};
 
 export const getOrCreateNotificationSettings =
   async (): Promise<NotificationSettings> => {

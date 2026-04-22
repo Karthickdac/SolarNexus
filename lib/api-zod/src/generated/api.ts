@@ -272,6 +272,74 @@ export const UpdateAlertPreferencesResponse = zod.object({
 });
 
 /**
+ * Returns the staleness threshold override (in minutes) configured for
+each site. Sites without an override fall back to the global
+notification threshold.
+
+ * @summary List per-site staleness threshold overrides
+ */
+export const listSiteStalenessThresholdsResponseThresholdsItemThresholdMinutesMax = 1440;
+
+export const ListSiteStalenessThresholdsResponse = zod.object({
+  thresholds: zod.array(
+    zod.object({
+      siteId: zod.string(),
+      thresholdMinutes: zod
+        .number()
+        .min(1)
+        .max(
+          listSiteStalenessThresholdsResponseThresholdsItemThresholdMinutesMax,
+        ),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Set the staleness threshold for a site
+ */
+export const upsertSiteStalenessThresholdBodySiteIdMax = 128;
+
+export const upsertSiteStalenessThresholdBodyThresholdMinutesMax = 1440;
+
+export const UpsertSiteStalenessThresholdBody = zod.object({
+  siteId: zod
+    .string()
+    .min(1)
+    .max(upsertSiteStalenessThresholdBodySiteIdMax)
+    .describe("Stable site identifier from the dashboard's site config."),
+  thresholdMinutes: zod
+    .number()
+    .min(1)
+    .max(upsertSiteStalenessThresholdBodyThresholdMinutesMax),
+});
+
+export const upsertSiteStalenessThresholdResponseThresholdThresholdMinutesMax = 1440;
+
+export const UpsertSiteStalenessThresholdResponse = zod.object({
+  threshold: zod.object({
+    siteId: zod.string(),
+    thresholdMinutes: zod
+      .number()
+      .min(1)
+      .max(upsertSiteStalenessThresholdResponseThresholdThresholdMinutesMax),
+    updatedAt: zod.coerce.date(),
+  }),
+});
+
+/**
+ * @summary Remove the per-site threshold so the site reverts to the global default
+ */
+export const deleteSiteStalenessThresholdPathSiteIdMax = 128;
+
+export const DeleteSiteStalenessThresholdParams = zod.object({
+  siteId: zod.coerce
+    .string()
+    .min(1)
+    .max(deleteSiteStalenessThresholdPathSiteIdMax),
+});
+
+/**
  * @summary List recent alert events
  */
 export const listAlertEventsQueryLimitDefault = 50;

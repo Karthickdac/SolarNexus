@@ -36,8 +36,12 @@ import {
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
+  deleteSiteStalenessThreshold,
   getListModbusReadingsQueryKey,
+  getListSiteStalenessThresholdsQueryKey,
+  upsertSiteStalenessThreshold,
   useListModbusReadings,
+  useListSiteStalenessThresholds,
 } from "@workspace/api-client-react";
 import type {
   ModbusDecodedRegister,
@@ -602,18 +606,8 @@ export default function Dashboard() {
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
   const [nowTick, setNowTick] = useState(() => Date.now());
-  const [stalenessThresholdMinutes, setStalenessThresholdMinutesState] = useState<number>(() => {
-    if (typeof window === "undefined") return 30;
-    const raw = window.localStorage.getItem("solarnexus.staleness-threshold-minutes.v1");
-    const parsed = raw ? Number(raw) : NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
-  });
-  const setStalenessThresholdMinutes = (value: number) => {
-    setStalenessThresholdMinutesState(value);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("solarnexus.staleness-threshold-minutes.v1", String(value));
-    }
-  };
+  const DEFAULT_STALENESS_THRESHOLD = 30;
+  const [thresholdSaveError, setThresholdSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNowTick(Date.now()), 60_000);
@@ -680,7 +674,7 @@ export default function Dashboard() {
   const { data: deviceListData } = useListModbusReadings({ limit: 100 });
   const { data, isLoading, isFetching, isError, error, dataUpdatedAt } = useListModbusReadings(
     queryParams,
-    { query: { enabled: queryEnabled, placeholderData: queryEnabled ? undefined : { readings: [] } } },
+    { query: { enabled: queryEnabled, placeholderData: queryEnabled ? undefined : { readings: [] }, queryKey: getListModbusReadingsQueryKey(queryParams) } },
   );
   const loading = queryEnabled && (isLoading || isFetching);
 
@@ -702,6 +696,59 @@ export default function Dashboard() {
   const { sites, visibleSites, currentSite, currentSiteId, setCurrentSiteId, addSite, updateSite, deleteSite, setBlueprintForSite } =
     useSites(allowedSiteIds);
   const isSuperAdmin = currentUser?.role === "super-admin";
+
+  const { data: siteThresholdsData } = useListSiteStalenessThresholds({
+    query: {
+      staleTime: 30_000,
+      queryKey: getListSiteStalenessThresholdsQueryKey(),
+    },
+  });
+  const siteThresholdsByScope = useMemo(() => {
+    const map = new Map<string, number>();
+    (siteThresholdsData?.thresholds ?? []).forEach((entry) => {
+      map.set(entry.siteId, entry.thresholdMinutes);
+    });
+    return map;
+  }, [siteThresholdsData]);
+  const stalenessThresholdMinutes = currentSite
+    ? siteThresholdsByScope.get(currentSite.id) ?? DEFAULT_STALENESS_THRESHOLD
+    : DEFAULT_STALENESS_THRESHOLD;
+  const siteHasThresholdOverride =
+    !!currentSite && siteThresholdsByScope.has(currentSite.id);
+  const setStalenessThresholdMinutes = async (value: number) => {
+    if (!currentSite) return;
+    setThresholdSaveError(null);
+    const targetSiteId = currentSite.id;
+    try {
+      // Read the freshest cached list rather than the closure-captured
+      // `siteHasThresholdOverride` so quick consecutive edits don't decide
+      // delete-vs-upsert from stale render state.
+      const cached = queryClient.getQueryData<{
+        thresholds: { siteId: string; thresholdMinutes: number }[];
+      }>(getListSiteStalenessThresholdsQueryKey());
+      const hasOverrideNow =
+        cached?.thresholds.some((t) => t.siteId === targetSiteId) ?? false;
+      if (value === DEFAULT_STALENESS_THRESHOLD && hasOverrideNow) {
+        await deleteSiteStalenessThreshold(targetSiteId);
+      } else if (value !== DEFAULT_STALENESS_THRESHOLD || hasOverrideNow) {
+        await upsertSiteStalenessThreshold({
+          siteId: targetSiteId,
+          thresholdMinutes: value,
+        });
+      }
+      await queryClient.invalidateQueries({
+        queryKey: getListSiteStalenessThresholdsQueryKey(),
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to save threshold.";
+      setThresholdSaveError(
+        message.includes("401") || message.includes("403")
+          ? "Admin API token is required to change the per-site threshold. Open the alerts panel and paste it in."
+          : message,
+      );
+    }
+  };
 
   const siteBlueprint: SiteBlueprint = currentSite ?? {
     siteName: "No site",
@@ -1103,21 +1150,31 @@ export default function Dashboard() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label htmlFor="staleness-threshold" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Warn when stale after
+                    Warn when stale after{currentSite ? ` (${siteBlueprint.siteName})` : ""}
                   </label>
                   <select
                     id="staleness-threshold"
                     className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
                     value={stalenessThresholdMinutes}
-                    onChange={(event) => setStalenessThresholdMinutes(Number(event.target.value))}
+                    disabled={!currentSite}
+                    onChange={(event) => {
+                      void setStalenessThresholdMinutes(Number(event.target.value));
+                    }}
                   >
                     {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
                       <option key={minutes} value={minutes}>
                         {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                        {minutes === DEFAULT_STALENESS_THRESHOLD ? " (default)" : ""}
                       </option>
                     ))}
                   </select>
-                  <span className="text-[11px] text-muted-foreground">Devices warn when no payload arrives for this long; faulted at 3×.</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Per-site setting, saved on the server. Devices warn when no payload arrives for this long; faulted at 3×.
+                    {siteHasThresholdOverride ? " Picking the default clears the override." : ""}
+                  </span>
+                  {thresholdSaveError ? (
+                    <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
+                  ) : null}
                 </div>
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}

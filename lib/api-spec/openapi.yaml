@@ -157,6 +157,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /alerts/site-thresholds:
+    get:
+      operationId: listSiteStalenessThresholds
+      tags: [alerts]
+      summary: List per-site staleness threshold overrides
+      description: |
+        Returns the staleness threshold override (in minutes) configured for
+        each site. Sites without an override fall back to the global
+        notification threshold.
+      responses:
+        "200":
+          description: List of per-site threshold overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteThresholdsList"
+    put:
+      operationId: upsertSiteStalenessThreshold
+      tags: [alerts]
+      summary: Set the staleness threshold for a site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertSiteThresholdBody"
+      responses:
+        "200":
+          description: Threshold saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteThresholdResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /alerts/site-thresholds/{siteId}:
+    delete:
+      operationId: deleteSiteStalenessThreshold
+      tags: [alerts]
+      summary: Remove the per-site threshold so the site reverts to the global default
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        "204":
+          description: Threshold removed (or never existed)
+        "400":
+          description: Invalid site identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /alerts/events:
     get:
       operationId: listAlertEvents
@@ -517,6 +578,53 @@ components:
         dispatched:
           type: integer
       required: [evaluated, dispatched]
+    SiteThreshold:
+      type: object
+      properties:
+        siteId:
+          type: string
+        thresholdMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - siteId
+        - thresholdMinutes
+        - updatedAt
+    SiteThresholdsList:
+      type: object
+      properties:
+        thresholds:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteThreshold"
+      required:
+        - thresholds
+    SiteThresholdResponse:
+      type: object
+      properties:
+        threshold:
+          $ref: "#/components/schemas/SiteThreshold"
+      required:
+        - threshold
+    UpsertSiteThresholdBody:
+      type: object
+      properties:
+        siteId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Stable site identifier from the dashboard's site config.
+        thresholdMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+      required:
+        - siteId
+        - thresholdMinutes
     AlertTestBody:
       type: object
       properties:
