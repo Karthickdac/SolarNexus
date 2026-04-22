@@ -12,6 +12,7 @@ import { decodeModbusPayload } from "../modbus-decoder";
 
 const router: IRouter = Router();
 const DEVICE_TOKEN_ENV = "MODBUS_INGEST_TOKEN";
+const DEVICE_TOKEN_PREVIOUS_ENV = "MODBUS_INGEST_TOKEN_PREVIOUS";
 
 const getSource = (req: Request) => {
   const forwardedFor = req.get("x-forwarded-for");
@@ -33,30 +34,75 @@ const tokensMatch = (candidate: string, expected: string) => {
   );
 };
 
-const authenticateDeviceRequest = (req: Request) => {
-  const expectedToken = process.env[DEVICE_TOKEN_ENV]?.trim();
+const parseTokenList = (raw: string | undefined): string[] => {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+};
 
-  if (!expectedToken) {
+type TokenSlot = "current" | "previous";
+
+const getAcceptedTokens = (): { slot: TokenSlot; token: string }[] => {
+  const current = process.env[DEVICE_TOKEN_ENV]?.trim();
+  const previous = parseTokenList(process.env[DEVICE_TOKEN_PREVIOUS_ENV]);
+
+  const tokens: { slot: TokenSlot; token: string }[] = [];
+  const seen = new Set<string>();
+
+  if (current) {
+    tokens.push({ slot: "current", token: current });
+    seen.add(current);
+  }
+
+  for (const token of previous) {
+    if (seen.has(token)) continue;
+    tokens.push({ slot: "previous", token });
+    seen.add(token);
+  }
+
+  return tokens;
+};
+
+type AuthResult =
+  | { ok: true; slot: TokenSlot }
+  | { ok: false; status: 401 | 503; error: string };
+
+const authenticateDeviceRequest = (req: Request): AuthResult => {
+  const acceptedTokens = getAcceptedTokens();
+
+  if (acceptedTokens.length === 0) {
     return {
       ok: false,
       status: 503,
       error: "Device ingest token is not configured.",
-    } as const;
+    };
   }
 
   const providedToken =
     req.get("x-device-key")?.trim() ||
     extractBearerToken(req.get("authorization"));
 
-  if (!providedToken || !tokensMatch(providedToken, expectedToken)) {
+  if (!providedToken) {
     return {
       ok: false,
       status: 401,
       error: "Unauthorized: missing or invalid device token.",
-    } as const;
+    };
   }
 
-  return { ok: true } as const;
+  for (const { slot, token } of acceptedTokens) {
+    if (tokensMatch(providedToken, token)) {
+      return { ok: true, slot };
+    }
+  }
+
+  return {
+    ok: false,
+    status: 401,
+    error: "Unauthorized: missing or invalid device token.",
+  };
 };
 
 router.get("/modbus/readings", async (req, res): Promise<void> => {
@@ -90,6 +136,13 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
     );
     res.status(authResult.status).json({ error: authResult.error });
     return;
+  }
+
+  if (authResult.slot === "previous") {
+    req.log.warn(
+      { source: getSource(req) },
+      "Modbus reading authenticated with a previous (rotating) device token. Migrate this device to the current MODBUS_INGEST_TOKEN and retire the previous one.",
+    );
   }
 
   const rawPayload = req.body;

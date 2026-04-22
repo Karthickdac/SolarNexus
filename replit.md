@@ -56,6 +56,19 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 - `TRB246_REGISTER_MAP_JSON` — optional JSON object for overriding or adding register definitions without code changes. Each key is a register address and each value includes `name`, `unit`, `kind` (`number` or `boolean`), optional `scale`, and optional `labels`.
 - `MODBUS_INGEST_TOKEN` — required shared secret for the TRB246/device ingest endpoint. Store it as an environment secret, never in source code.
+- `MODBUS_INGEST_TOKEN_PREVIOUS` — optional, comma-separated list of previously valid device tokens still accepted during a rotation window. Unset once all devices have been migrated.
+
+## Device Token Rotation
+
+The ingest endpoint accepts the current `MODBUS_INGEST_TOKEN` plus any comma-separated tokens in `MODBUS_INGEST_TOKEN_PREVIOUS`, so admins can rotate without dropping device traffic. Recommended workflow:
+
+1. **Generate a new token** (e.g. `openssl rand -hex 32`).
+2. **Stage the rotation:** copy the existing `MODBUS_INGEST_TOKEN` value into `MODBUS_INGEST_TOKEN_PREVIOUS` (append to existing comma-separated list if needed), then set `MODBUS_INGEST_TOKEN` to the new value. Restart the API workflow so the new env vars take effect. Both tokens are now accepted.
+3. **Migrate devices:** update each TRB246/Modbus reader to send the new token in `x-device-key` (or `Authorization: Bearer ...`). Migrated devices keep ingesting through the new token; not-yet-migrated devices keep working through the previous token.
+4. **Confirm migration:** watch the API server logs for the warning `authenticated with a previous (rotating) device token`. When no such warnings appear for a full reporting interval (e.g. 24 hours), every device has switched.
+5. **Retire the old token:** remove the rotated-out value from `MODBUS_INGEST_TOKEN_PREVIOUS` (or unset the variable entirely) and restart the API workflow. Old token is now rejected with `401`.
+
+If a token is suspected to be compromised, you can skip step 2's grace period by rotating `MODBUS_INGEST_TOKEN` immediately and leaving `MODBUS_INGEST_TOKEN_PREVIOUS` unset; non-migrated devices will fail until updated.
 
 ## Rollout Notes
 
