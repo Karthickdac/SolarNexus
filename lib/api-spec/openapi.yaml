@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: modbus
     description: Modbus reader ingestion operations
+  - name: alerts
+    description: Stale-device alert preferences and event log
 paths:
   /healthz:
     get:
@@ -111,6 +113,99 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /alerts/preferences:
+    get:
+      operationId: getAlertPreferences
+      tags: [alerts]
+      summary: Get notification preferences
+      responses:
+        "200":
+          description: Current preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+    put:
+      operationId: updateAlertPreferences
+      tags: [alerts]
+      summary: Update notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNotificationPreferencesBody"
+      responses:
+        "200":
+          description: Updated preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /alerts/events:
+    get:
+      operationId: listAlertEvents
+      tags: [alerts]
+      summary: List recent alert events
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: since
+          in: query
+          required: false
+          description: Optional ISO-8601 timestamp; only events created at or after this time are returned.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Recent alert events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceAlertEventsList"
+  /alerts/test:
+    post:
+      operationId: sendTestAlert
+      tags: [alerts]
+      summary: Dispatch a test alert through configured channels
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertTestBody"
+      responses:
+        "200":
+          description: Test alert dispatched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertTestResponse"
+  /alerts/evaluate:
+    post:
+      operationId: evaluateAlertsNow
+      tags: [alerts]
+      summary: Manually trigger the staleness evaluator
+      responses:
+        "200":
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateAlertsResponse"
 components:
   securitySchemes:
     DeviceKeyAuth:
@@ -265,4 +360,155 @@ components:
           type: string
       required:
         - error
+    NotificationChannelConfig:
+      type: object
+      properties:
+        inApp:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+          required: [enabled]
+        webhook:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            url:
+              type: string
+          required: [enabled, url]
+        email:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            to:
+              type: string
+          required: [enabled, to]
+      required: [inApp, webhook, email]
+    NotificationPreferences:
+      type: object
+      properties:
+        id:
+          type: integer
+        scope:
+          type: string
+        enabled:
+          type: boolean
+        thresholdMinutes:
+          type: integer
+          minimum: 1
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+        channels:
+          $ref: "#/components/schemas/NotificationChannelConfig"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - scope
+        - enabled
+        - thresholdMinutes
+        - cooldownMinutes
+        - channels
+        - updatedAt
+    NotificationPreferencesResponse:
+      type: object
+      properties:
+        preferences:
+          $ref: "#/components/schemas/NotificationPreferences"
+      required: [preferences]
+    UpdateNotificationPreferencesBody:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        thresholdMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        cooldownMinutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        channels:
+          $ref: "#/components/schemas/NotificationChannelConfig"
+      required: [enabled, thresholdMinutes, cooldownMinutes, channels]
+    DeviceAlertChannelDispatch:
+      type: object
+      properties:
+        channel:
+          type: string
+          enum: [inApp, webhook, email]
+        status:
+          type: string
+          enum: [delivered, skipped, failed]
+        detail:
+          type: string
+      required: [channel, status]
+    DeviceAlertEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        severity:
+          type: string
+          enum: [warning, fault, resolved]
+        minutesSinceData:
+          type: integer
+        thresholdMinutes:
+          type: integer
+        message:
+          type: string
+        dispatch:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceAlertChannelDispatch"
+        acknowledgedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - deviceId
+        - severity
+        - minutesSinceData
+        - thresholdMinutes
+        - message
+        - dispatch
+        - acknowledgedAt
+        - createdAt
+    DeviceAlertEventsList:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceAlertEvent"
+      required: [events]
+    EvaluateAlertsResponse:
+      type: object
+      properties:
+        evaluated:
+          type: integer
+        dispatched:
+          type: integer
+      required: [evaluated, dispatched]
+    AlertTestBody:
+      type: object
+      properties:
+        deviceId:
+          type: string
+    AlertTestResponse:
+      type: object
+      properties:
+        event:
+          $ref: "#/components/schemas/DeviceAlertEvent"
+      required: [event]
 

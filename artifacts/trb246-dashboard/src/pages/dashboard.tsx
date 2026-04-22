@@ -19,6 +19,7 @@ import {
 import {
   AlertTriangle,
   BarChart3,
+  Bell,
   Building2,
   CheckCircle2,
   Cpu,
@@ -57,6 +58,7 @@ import { useSites } from "../config/sites-store";
 import { useUsers } from "../config/users-store";
 import { SitesManager } from "../components/sites-manager";
 import { UsersManager } from "../components/users-manager";
+import { AlertsPanel, AlertsBell } from "../components/alerts-panel";
 
 const CHART_COLORS = {
   amber: "#ff9900",
@@ -822,6 +824,7 @@ export default function Dashboard() {
               { id: "simulation", label: "Plant Simulation", Icon: Network, adminOnly: false },
               { id: "analytics", label: "Telemetry Analytics", Icon: BarChart3, adminOnly: false },
               { id: "report", label: "Reports", Icon: FileText, adminOnly: false },
+              { id: "alerts", label: "Alerts", Icon: Bell, adminOnly: false },
               { id: "config", label: "Site Configuration", Icon: Settings, adminOnly: false },
               { id: "sites", label: "Sites", Icon: Building2, adminOnly: true },
               { id: "users", label: "Users", Icon: UsersIcon, adminOnly: true },
@@ -924,6 +927,7 @@ export default function Dashboard() {
                 autoRefreshInterval={autoRefreshInterval}
                 setAutoRefreshInterval={setAutoRefreshInterval}
               />
+              <AlertsBell onOpen={() => setActiveView("alerts")} />
               <Button variant="outline" size="icon" onClick={() => window.print()} aria-label="Export as PDF">
                 <Printer className="h-4 w-4" />
               </Button>
@@ -1041,12 +1045,13 @@ export default function Dashboard() {
               </Card>
             )}
 
-            <div className="grid gap-2 rounded-xl border bg-card p-1 md:inline-grid md:grid-cols-5">
+            <div className="grid gap-2 rounded-xl border bg-card p-1 md:inline-grid md:grid-cols-6">
               {[
                 { id: "overview", label: "Overview" },
                 { id: "simulation", label: "Simulation" },
                 { id: "analytics", label: "Analytics" },
                 { id: "report", label: "Report" },
+                { id: "alerts", label: "Alerts" },
                 { id: "config", label: "Config" },
               ].map((item) => (
                 <Button
@@ -1222,6 +1227,10 @@ export default function Dashboard() {
                 </Card>
               </div>
             </div>
+            )}
+
+            {activeView === "alerts" && (
+              <AlertsPanel />
             )}
 
             {activeView === "config" && (

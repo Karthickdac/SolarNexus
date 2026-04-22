@@ -17,12 +17,19 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AlertTestBody,
+  AlertTestResponse,
+  DeviceAlertEventsList,
   ErrorResponse,
+  EvaluateAlertsResponse,
   HealthStatus,
+  ListAlertEventsParams,
   ListModbusReadingsParams,
   ModbusReadingAck,
   ModbusReadingIngestBody,
   ModbusReadingsList,
+  NotificationPreferencesResponse,
+  UpdateNotificationPreferencesBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -296,4 +303,433 @@ export const useCreateModbusReading = <
   TContext
 > => {
   return useMutation(getCreateModbusReadingMutationOptions(options));
+};
+
+/**
+ * @summary Get notification preferences
+ */
+export const getGetAlertPreferencesUrl = () => {
+  return `/api/alerts/preferences`;
+};
+
+export const getAlertPreferences = async (
+  options?: RequestInit,
+): Promise<NotificationPreferencesResponse> => {
+  return customFetch<NotificationPreferencesResponse>(
+    getGetAlertPreferencesUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAlertPreferencesQueryKey = () => {
+  return [`/api/alerts/preferences`] as const;
+};
+
+export const getGetAlertPreferencesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAlertPreferences>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAlertPreferences>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAlertPreferencesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAlertPreferences>>
+  > = ({ signal }) => getAlertPreferences({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAlertPreferences>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAlertPreferencesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAlertPreferences>>
+>;
+export type GetAlertPreferencesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get notification preferences
+ */
+
+export function useGetAlertPreferences<
+  TData = Awaited<ReturnType<typeof getAlertPreferences>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAlertPreferences>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAlertPreferencesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update notification preferences
+ */
+export const getUpdateAlertPreferencesUrl = () => {
+  return `/api/alerts/preferences`;
+};
+
+export const updateAlertPreferences = async (
+  updateNotificationPreferencesBody: UpdateNotificationPreferencesBody,
+  options?: RequestInit,
+): Promise<NotificationPreferencesResponse> => {
+  return customFetch<NotificationPreferencesResponse>(
+    getUpdateAlertPreferencesUrl(),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateNotificationPreferencesBody),
+    },
+  );
+};
+
+export const getUpdateAlertPreferencesMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAlertPreferences>>,
+    TError,
+    { data: BodyType<UpdateNotificationPreferencesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAlertPreferences>>,
+  TError,
+  { data: BodyType<UpdateNotificationPreferencesBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAlertPreferences"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAlertPreferences>>,
+    { data: BodyType<UpdateNotificationPreferencesBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateAlertPreferences(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAlertPreferencesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAlertPreferences>>
+>;
+export type UpdateAlertPreferencesMutationBody =
+  BodyType<UpdateNotificationPreferencesBody>;
+export type UpdateAlertPreferencesMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Update notification preferences
+ */
+export const useUpdateAlertPreferences = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAlertPreferences>>,
+    TError,
+    { data: BodyType<UpdateNotificationPreferencesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAlertPreferences>>,
+  TError,
+  { data: BodyType<UpdateNotificationPreferencesBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAlertPreferencesMutationOptions(options));
+};
+
+/**
+ * @summary List recent alert events
+ */
+export const getListAlertEventsUrl = (params?: ListAlertEventsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/alerts/events?${stringifiedParams}`
+    : `/api/alerts/events`;
+};
+
+export const listAlertEvents = async (
+  params?: ListAlertEventsParams,
+  options?: RequestInit,
+): Promise<DeviceAlertEventsList> => {
+  return customFetch<DeviceAlertEventsList>(getListAlertEventsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAlertEventsQueryKey = (params?: ListAlertEventsParams) => {
+  return [`/api/alerts/events`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAlertEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAlertEvents>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAlertEventsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlertEvents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAlertEventsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAlertEvents>>> = ({
+    signal,
+  }) => listAlertEvents(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAlertEvents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAlertEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAlertEvents>>
+>;
+export type ListAlertEventsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent alert events
+ */
+
+export function useListAlertEvents<
+  TData = Awaited<ReturnType<typeof listAlertEvents>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAlertEventsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlertEvents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAlertEventsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Dispatch a test alert through configured channels
+ */
+export const getSendTestAlertUrl = () => {
+  return `/api/alerts/test`;
+};
+
+export const sendTestAlert = async (
+  alertTestBody?: AlertTestBody,
+  options?: RequestInit,
+): Promise<AlertTestResponse> => {
+  return customFetch<AlertTestResponse>(getSendTestAlertUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(alertTestBody),
+  });
+};
+
+export const getSendTestAlertMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendTestAlert>>,
+    TError,
+    { data: BodyType<AlertTestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendTestAlert>>,
+  TError,
+  { data: BodyType<AlertTestBody> },
+  TContext
+> => {
+  const mutationKey = ["sendTestAlert"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendTestAlert>>,
+    { data: BodyType<AlertTestBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return sendTestAlert(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendTestAlertMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendTestAlert>>
+>;
+export type SendTestAlertMutationBody = BodyType<AlertTestBody>;
+export type SendTestAlertMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Dispatch a test alert through configured channels
+ */
+export const useSendTestAlert = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendTestAlert>>,
+    TError,
+    { data: BodyType<AlertTestBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendTestAlert>>,
+  TError,
+  { data: BodyType<AlertTestBody> },
+  TContext
+> => {
+  return useMutation(getSendTestAlertMutationOptions(options));
+};
+
+/**
+ * @summary Manually trigger the staleness evaluator
+ */
+export const getEvaluateAlertsNowUrl = () => {
+  return `/api/alerts/evaluate`;
+};
+
+export const evaluateAlertsNow = async (
+  options?: RequestInit,
+): Promise<EvaluateAlertsResponse> => {
+  return customFetch<EvaluateAlertsResponse>(getEvaluateAlertsNowUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getEvaluateAlertsNowMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof evaluateAlertsNow>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof evaluateAlertsNow>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["evaluateAlertsNow"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof evaluateAlertsNow>>,
+    void
+  > = () => {
+    return evaluateAlertsNow(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EvaluateAlertsNowMutationResult = NonNullable<
+  Awaited<ReturnType<typeof evaluateAlertsNow>>
+>;
+
+export type EvaluateAlertsNowMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Manually trigger the staleness evaluator
+ */
+export const useEvaluateAlertsNow = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof evaluateAlertsNow>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof evaluateAlertsNow>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getEvaluateAlertsNowMutationOptions(options));
 };

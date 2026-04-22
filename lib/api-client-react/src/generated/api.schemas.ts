@@ -101,6 +101,120 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type NotificationChannelConfigInApp = {
+  enabled: boolean;
+};
+
+export type NotificationChannelConfigWebhook = {
+  enabled: boolean;
+  url: string;
+};
+
+export type NotificationChannelConfigEmail = {
+  enabled: boolean;
+  to: string;
+};
+
+export interface NotificationChannelConfig {
+  inApp: NotificationChannelConfigInApp;
+  webhook: NotificationChannelConfigWebhook;
+  email: NotificationChannelConfigEmail;
+}
+
+export interface NotificationPreferences {
+  id: number;
+  scope: string;
+  enabled: boolean;
+  /** @minimum 1 */
+  thresholdMinutes: number;
+  /** @minimum 1 */
+  cooldownMinutes: number;
+  channels: NotificationChannelConfig;
+  updatedAt: string;
+}
+
+export interface NotificationPreferencesResponse {
+  preferences: NotificationPreferences;
+}
+
+export interface UpdateNotificationPreferencesBody {
+  enabled: boolean;
+  /**
+   * @minimum 1
+   * @maximum 1440
+   */
+  thresholdMinutes: number;
+  /**
+   * @minimum 1
+   * @maximum 1440
+   */
+  cooldownMinutes: number;
+  channels: NotificationChannelConfig;
+}
+
+export type DeviceAlertChannelDispatchChannel =
+  (typeof DeviceAlertChannelDispatchChannel)[keyof typeof DeviceAlertChannelDispatchChannel];
+
+export const DeviceAlertChannelDispatchChannel = {
+  inApp: "inApp",
+  webhook: "webhook",
+  email: "email",
+} as const;
+
+export type DeviceAlertChannelDispatchStatus =
+  (typeof DeviceAlertChannelDispatchStatus)[keyof typeof DeviceAlertChannelDispatchStatus];
+
+export const DeviceAlertChannelDispatchStatus = {
+  delivered: "delivered",
+  skipped: "skipped",
+  failed: "failed",
+} as const;
+
+export interface DeviceAlertChannelDispatch {
+  channel: DeviceAlertChannelDispatchChannel;
+  status: DeviceAlertChannelDispatchStatus;
+  detail?: string;
+}
+
+export type DeviceAlertEventSeverity =
+  (typeof DeviceAlertEventSeverity)[keyof typeof DeviceAlertEventSeverity];
+
+export const DeviceAlertEventSeverity = {
+  warning: "warning",
+  fault: "fault",
+  resolved: "resolved",
+} as const;
+
+export interface DeviceAlertEvent {
+  id: number;
+  deviceId: string;
+  severity: DeviceAlertEventSeverity;
+  minutesSinceData: number;
+  thresholdMinutes: number;
+  message: string;
+  dispatch: DeviceAlertChannelDispatch[];
+  /** @nullable */
+  acknowledgedAt: string | null;
+  createdAt: string;
+}
+
+export interface DeviceAlertEventsList {
+  events: DeviceAlertEvent[];
+}
+
+export interface EvaluateAlertsResponse {
+  evaluated: number;
+  dispatched: number;
+}
+
+export interface AlertTestBody {
+  deviceId?: string;
+}
+
+export interface AlertTestResponse {
+  event: DeviceAlertEvent;
+}
+
 export type ListModbusReadingsParams = {
   /**
    * @minimum 1
@@ -120,4 +234,16 @@ export type ListModbusReadingsParams = {
    * Optional ISO-8601 timestamp; only readings received at or before this time are returned.
    */
   until?: string;
+};
+
+export type ListAlertEventsParams = {
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * Optional ISO-8601 timestamp; only events created at or after this time are returned.
+   */
+  since?: string;
 };

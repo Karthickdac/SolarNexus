@@ -39,10 +39,16 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `GET /api/healthz` — API health check.
 - `POST /api/modbus/readings` — receives non-empty JSON payloads from a Teltonika TRB246 / Modbus reader and stores the raw payload with `deviceId`, source, parsing status, decoded values, and received timestamp. Requires the shared device token from `MODBUS_INGEST_TOKEN` via `x-device-key` or `Authorization: Bearer <token>`. If `deviceId` is omitted, the server falls back to `device`, `imei`, then `trb246`.
 - `GET /api/modbus/readings?limit=25` — returns recent stored Modbus reader payloads plus decoded register values for verification and dashboard visualization.
+- `GET /api/alerts/preferences` / `PUT /api/alerts/preferences` — read or update the global stale-device notification preferences (enabled flag, threshold, repeat cooldown, per-channel config for in-app feed, webhook URL, email).
+- `GET /api/alerts/events?limit=50&since=ISO` — list recent stale-device alert events with per-channel dispatch results.
+- `POST /api/alerts/test` — dispatch a synthetic alert through the currently configured channels (useful for verifying webhook/email setup).
+- `POST /api/alerts/evaluate` — run the staleness evaluator immediately instead of waiting for the next 60-second tick.
 
 ## Database Tables
 
 - `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads, intake metadata, and decoded register values. Unknown or invalid registers are retained in `decoded_values.registers` with explicit status/error details.
+- `notification_settings` — single global row (`scope = 'global'`) holding the staleness threshold, repeat cooldown, master enabled flag, and per-channel config (in-app, webhook, email).
+- `device_alert_events` — append-only log of stale-device alerts with severity (`warning`/`fault`/`resolved`), how long the device had been silent, the threshold used, the user-facing message, and the per-channel dispatch result (`delivered`/`skipped`/`failed`).
 
 ## Dashboard Notes
 
@@ -59,6 +65,19 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `TRB246_REGISTER_MAP_JSON` — optional JSON object for overriding or adding register definitions without code changes. Each key is a register address and each value includes `name`, `unit`, `kind` (`number` or `boolean`), optional `scale`, and optional `labels`.
 - `MODBUS_INGEST_TOKEN` — required shared secret for the TRB246/device ingest endpoint. Store it as an environment secret, never in source code.
 - `MODBUS_INGEST_TOKEN_PREVIOUS` — optional, comma-separated list of previously valid device tokens still accepted during a rotation window. Unset once all devices have been migrated.
+- `SMTP_HOST` — optional. When set, future builds may use it to send email alerts. The current build records email-channel attempts as `skipped` until an SMTP transport is wired up; webhook delivery is the recommended outbound channel today.
+- `ADMIN_API_TOKEN` — optional shared secret for the alert preference / dispatch / evaluate endpoints. When set, callers must include it in the `x-admin-token` header (or `Authorization: Bearer <token>`) to mutate notification preferences, send a test alert, or trigger an immediate evaluation. When unset (the current default), responses include an `x-admin-auth: disabled` header and the API server logs a non-local startup warning so operators are aware. Webhook URLs are independently validated to reject loopback, RFC1918, link-local, IPv6 unique-local, `.local`/`.internal` suffix, and `localhost`/cloud-metadata hostnames before any outbound HTTP call.
+
+## Stale-Device Alerts
+
+The API server runs a background staleness monitor every 60 seconds (started from `artifacts/api-server/src/index.ts`). Each tick reads the latest `received_at` per device from `modbus_readings`, compares it to the configured threshold in `notification_settings`, and writes a `device_alert_events` row plus dispatches the configured channels when a device crosses (or recovers from) the threshold. Repeat alerts for the same device are suppressed inside the configured cooldown window so a single outage does not spam recipients.
+
+Channels supported today:
+- **In-app** — always recorded; surfaces in the dashboard bell badge and Alerts view.
+- **Webhook** — POSTs a JSON body to any URL (Slack/Teams/Discord-compatible incoming webhooks work out of the box). 5-second timeout, recorded as `delivered` / `failed` per attempt.
+- **Email** — placeholder; configure `SMTP_HOST` to enable in a future iteration. Currently recorded as `skipped`.
+
+Operators can edit preferences (enabled flag, threshold minutes, cooldown minutes, channels, webhook URL, email recipient) from the Alerts view in the dashboard, and the same view exposes "Send test alert" and "Evaluate devices now" buttons for verification.
 
 ## Device Token Rotation
 

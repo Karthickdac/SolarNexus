@@ -160,3 +160,164 @@ export const CreateModbusReadingResponse = zod.object({
     receivedAt: zod.coerce.date(),
   }),
 });
+
+/**
+ * @summary Get notification preferences
+ */
+
+export const GetAlertPreferencesResponse = zod.object({
+  preferences: zod.object({
+    id: zod.number(),
+    scope: zod.string(),
+    enabled: zod.boolean(),
+    thresholdMinutes: zod.number().min(1),
+    cooldownMinutes: zod.number().min(1),
+    channels: zod.object({
+      inApp: zod.object({
+        enabled: zod.boolean(),
+      }),
+      webhook: zod.object({
+        enabled: zod.boolean(),
+        url: zod.string(),
+      }),
+      email: zod.object({
+        enabled: zod.boolean(),
+        to: zod.string(),
+      }),
+    }),
+    updatedAt: zod.coerce.date(),
+  }),
+});
+
+/**
+ * @summary Update notification preferences
+ */
+export const updateAlertPreferencesBodyThresholdMinutesMax = 1440;
+
+export const updateAlertPreferencesBodyCooldownMinutesMax = 1440;
+
+export const UpdateAlertPreferencesBody = zod.object({
+  enabled: zod.boolean(),
+  thresholdMinutes: zod
+    .number()
+    .min(1)
+    .max(updateAlertPreferencesBodyThresholdMinutesMax),
+  cooldownMinutes: zod
+    .number()
+    .min(1)
+    .max(updateAlertPreferencesBodyCooldownMinutesMax),
+  channels: zod.object({
+    inApp: zod.object({
+      enabled: zod.boolean(),
+    }),
+    webhook: zod.object({
+      enabled: zod.boolean(),
+      url: zod.string(),
+    }),
+    email: zod.object({
+      enabled: zod.boolean(),
+      to: zod.string(),
+    }),
+  }),
+});
+
+export const UpdateAlertPreferencesResponse = zod.object({
+  preferences: zod.object({
+    id: zod.number(),
+    scope: zod.string(),
+    enabled: zod.boolean(),
+    thresholdMinutes: zod.number().min(1),
+    cooldownMinutes: zod.number().min(1),
+    channels: zod.object({
+      inApp: zod.object({
+        enabled: zod.boolean(),
+      }),
+      webhook: zod.object({
+        enabled: zod.boolean(),
+        url: zod.string(),
+      }),
+      email: zod.object({
+        enabled: zod.boolean(),
+        to: zod.string(),
+      }),
+    }),
+    updatedAt: zod.coerce.date(),
+  }),
+});
+
+/**
+ * @summary List recent alert events
+ */
+export const listAlertEventsQueryLimitDefault = 50;
+export const listAlertEventsQueryLimitMax = 200;
+
+export const ListAlertEventsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listAlertEventsQueryLimitMax)
+    .default(listAlertEventsQueryLimitDefault),
+  since: zod
+    .date()
+    .optional()
+    .describe(
+      "Optional ISO-8601 timestamp; only events created at or after this time are returned.",
+    ),
+});
+
+export const ListAlertEventsResponse = zod.object({
+  events: zod.array(
+    zod.object({
+      id: zod.number(),
+      deviceId: zod.string(),
+      severity: zod.enum(["warning", "fault", "resolved"]),
+      minutesSinceData: zod.number(),
+      thresholdMinutes: zod.number(),
+      message: zod.string(),
+      dispatch: zod.array(
+        zod.object({
+          channel: zod.enum(["inApp", "webhook", "email"]),
+          status: zod.enum(["delivered", "skipped", "failed"]),
+          detail: zod.string().optional(),
+        }),
+      ),
+      acknowledgedAt: zod.coerce.date().nullable(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Dispatch a test alert through configured channels
+ */
+export const SendTestAlertBody = zod.object({
+  deviceId: zod.string().optional(),
+});
+
+export const SendTestAlertResponse = zod.object({
+  event: zod.object({
+    id: zod.number(),
+    deviceId: zod.string(),
+    severity: zod.enum(["warning", "fault", "resolved"]),
+    minutesSinceData: zod.number(),
+    thresholdMinutes: zod.number(),
+    message: zod.string(),
+    dispatch: zod.array(
+      zod.object({
+        channel: zod.enum(["inApp", "webhook", "email"]),
+        status: zod.enum(["delivered", "skipped", "failed"]),
+        detail: zod.string().optional(),
+      }),
+    ),
+    acknowledgedAt: zod.coerce.date().nullable(),
+    createdAt: zod.coerce.date(),
+  }),
+});
+
+/**
+ * @summary Manually trigger the staleness evaluator
+ */
+export const EvaluateAlertsNowResponse = zod.object({
+  evaluated: zod.number(),
+  dispatched: zod.number(),
+});

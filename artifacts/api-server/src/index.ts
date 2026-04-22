@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { startStalenessMonitor } from "./lib/alerts-service";
 
 const rawPort = process.env["PORT"];
 const isLocalRuntime =
@@ -38,6 +39,12 @@ if (hasPreviousToken) {
   );
 }
 
+if (!isLocalRuntime && !process.env.ADMIN_API_TOKEN?.trim()) {
+  logger.warn(
+    "ADMIN_API_TOKEN is not configured. Alert preference and dispatch endpoints (/api/alerts/preferences PUT, /api/alerts/test, /api/alerts/evaluate) are unauthenticated and SHOULD NOT be exposed to untrusted networks until this is set.",
+  );
+}
+
 app.listen(port, (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
@@ -45,4 +52,5 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+  startStalenessMonitor();
 });
