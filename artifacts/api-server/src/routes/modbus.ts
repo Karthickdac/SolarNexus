@@ -8,7 +8,10 @@ import {
   ListModbusReadingsResponse,
 } from "@workspace/api-zod";
 import { decodeModbusPayload } from "../modbus-decoder";
-import { authenticateDeviceRequest } from "../lib/device-auth";
+import {
+  authenticateDeviceRequest,
+  warnIfPreviousTokenSlot,
+} from "../lib/device-auth";
 
 const router: IRouter = Router();
 
@@ -73,12 +76,7 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
     return;
   }
 
-  if (authResult.slot === "previous") {
-    req.log.warn(
-      { source: getSource(req) },
-      "Modbus reading authenticated with a previous (rotating) device token. Migrate this device to the current MODBUS_INGEST_TOKEN and retire the previous one.",
-    );
-  }
+  warnIfPreviousTokenSlot(req.log, authResult, { source: getSource(req) });
 
   const rawPayload = req.body;
 

@@ -58,6 +58,35 @@ export const getAcceptedTokens = (
   return tokens;
 };
 
+/**
+ * Pino-style structured logger surface used by Express via `req.log`.
+ * Only the methods the rotation warning needs are required so this stays
+ * easy to mock in tests.
+ */
+export type RotationLogger = {
+  warn: (...args: unknown[]) => void;
+};
+
+export const ROTATION_WARNING_MESSAGE =
+  "Modbus reading authenticated with a previous (rotating) device token. Migrate this device to the current MODBUS_INGEST_TOKEN and retire the previous one.";
+
+/**
+ * Emits the rotation warning iff the auth result was successful AND the
+ * accepted token came from the previous-token slot. Centralising this in a
+ * single helper means routes never miss the warning and it can be unit
+ * tested without mounting the full Express app.
+ */
+export const warnIfPreviousTokenSlot = (
+  log: RotationLogger,
+  authResult: AuthResult,
+  context?: Record<string, unknown>,
+): boolean => {
+  if (!authResult.ok) return false;
+  if (authResult.slot !== "previous") return false;
+  log.warn(context ?? {}, ROTATION_WARNING_MESSAGE);
+  return true;
+};
+
 export const authenticateDeviceRequest = (
   req: Pick<Request, "get">,
   env: NodeJS.ProcessEnv = process.env,

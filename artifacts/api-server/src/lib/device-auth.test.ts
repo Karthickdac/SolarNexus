@@ -4,6 +4,9 @@ import {
   authenticateDeviceRequest,
   getAcceptedTokens,
   parseTokenList,
+  ROTATION_WARNING_MESSAGE,
+  warnIfPreviousTokenSlot,
+  type AuthResult,
 } from "./device-auth.ts";
 
 const makeReq = (headers: Record<string, string | undefined>) => ({
@@ -169,5 +172,62 @@ describe("authenticateDeviceRequest", () => {
       },
     );
     assert.deepEqual(result, { ok: true, slot: "current" });
+  });
+});
+
+describe("warnIfPreviousTokenSlot", () => {
+  type LogCall = { args: unknown[] };
+  const makeLog = () => {
+    const calls: LogCall[] = [];
+    const log = {
+      warn: (...args: unknown[]) => {
+        calls.push({ args });
+      },
+    };
+    return { log, calls };
+  };
+
+  it("does not warn when authentication failed", () => {
+    const { log, calls } = makeLog();
+    const result: AuthResult = {
+      ok: false,
+      status: 401,
+      error: "Unauthorized: missing or invalid device token.",
+    };
+    const warned = warnIfPreviousTokenSlot(log, result);
+    assert.equal(warned, false);
+    assert.equal(calls.length, 0);
+  });
+
+  it("does not warn when the current token slot was used", () => {
+    const { log, calls } = makeLog();
+    const warned = warnIfPreviousTokenSlot(log, { ok: true, slot: "current" });
+    assert.equal(warned, false);
+    assert.equal(calls.length, 0);
+  });
+
+  it("warns once with the rotation message when the previous token slot was used", () => {
+    const { log, calls } = makeLog();
+    const warned = warnIfPreviousTokenSlot(
+      log,
+      { ok: true, slot: "previous" },
+      { source: "192.0.2.10" },
+    );
+    assert.equal(warned, true);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0]?.args[0], { source: "192.0.2.10" });
+    assert.equal(calls[0]?.args[1], ROTATION_WARNING_MESSAGE);
+    assert.match(
+      String(calls[0]?.args[1]),
+      /previous \(rotating\) device token/i,
+    );
+    assert.match(String(calls[0]?.args[1]), /MODBUS_INGEST_TOKEN/);
+  });
+
+  it("passes an empty context object when none is provided", () => {
+    const { log, calls } = makeLog();
+    warnIfPreviousTokenSlot(log, { ok: true, slot: "previous" });
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0]?.args[0], {});
   });
 });
