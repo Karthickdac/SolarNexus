@@ -740,7 +740,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [autoRefreshInterval, queryClient, queryParams]);
 
-  const rawReadings = data?.readings ?? [];
+  const rawReadings = queryEnabled ? (data?.readings ?? []) : [];
 
   const parsedData = useMemo<ParsedReading[]>(() => {
     return [...rawReadings].reverse().map((reading: ModbusReading) => {
