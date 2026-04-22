@@ -63,6 +63,89 @@ export function AlertsBell({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+const ADMIN_TOKEN_KEY = "solarnexus.adminApiToken";
+
+function AdminTokenField() {
+  const [value, setValue] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [saved, setSaved] = useState(false);
+  return (
+    <div className="rounded-md border border-dashed bg-muted/40 p-3 text-sm">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        Admin API token
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] normal-case tracking-normal text-muted-foreground">
+          stored only in this browser
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        In production deployments the alert preference, test, and evaluate
+        endpoints require <code>ADMIN_API_TOKEN</code>. Paste the same value
+        here so this browser can authenticate. The token is kept in
+        localStorage and is never bundled into the app.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setSaved(false);
+          }}
+          placeholder="Paste admin token"
+          className="h-9 flex-1 rounded-md border bg-background px-3 text-sm"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            try {
+              if (value.trim()) {
+                window.localStorage.setItem(ADMIN_TOKEN_KEY, value.trim());
+              } else {
+                window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+              }
+              setSaved(true);
+            } catch {
+              setSaved(false);
+            }
+          }}
+        >
+          Save
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            try {
+              window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+            } catch {
+              /* ignore */
+            }
+            setValue("");
+            setSaved(true);
+          }}
+        >
+          Clear
+        </Button>
+      </div>
+      {saved ? (
+        <p className="mt-2 text-xs text-emerald-600">
+          Saved. The token will be sent with admin requests from this browser.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function AlertsPanel() {
   const queryClient = useQueryClient();
   const prefsQuery = useGetAlertPreferences();
@@ -238,6 +321,8 @@ export function AlertsPanel() {
               </p>
             </div>
           </div>
+
+          <AdminTokenField />
 
           <div className="space-y-3">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">

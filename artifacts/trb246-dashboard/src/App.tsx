@@ -6,16 +6,19 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "./pages/dashboard";
 
-// When the operator has configured an admin API token at build time, attach
-// it to every request as a bearer token so the protected /api/alerts/*
-// admin endpoints stay reachable from the dashboard. Read endpoints that
-// don't require auth simply ignore the header.
-const adminToken = (import.meta.env.VITE_ADMIN_API_TOKEN as string | undefined)
-  ?.toString()
-  .trim();
-if (adminToken) {
-  setAuthTokenGetter(() => adminToken);
-}
+// Attach an admin bearer token from localStorage when the operator has
+// pasted one in via the Alerts settings panel. We deliberately do NOT read
+// the secret from a build-time env var because that would bake the secret
+// into the JS bundle served to every browser. Read endpoints that don't
+// require auth simply ignore the header.
+setAuthTokenGetter(() => {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem("solarnexus.adminApiToken");
+  } catch {
+    return null;
+  }
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
