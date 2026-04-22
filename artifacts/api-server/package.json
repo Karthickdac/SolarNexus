@@ -9,6 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "test:decoder": "node --experimental-strip-types --test src/modbus-decoder.test.ts",
     "test:ingestion": "node --experimental-strip-types --test src/modbus-ingestion.test.ts",
+    "test:device-auth": "node --experimental-strip-types --test src/lib/device-auth.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

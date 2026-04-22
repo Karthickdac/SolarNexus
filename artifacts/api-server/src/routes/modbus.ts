@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { and, desc, eq, gte, lte, type SQL } from "drizzle-orm";
 import { Router, type IRouter, type Request } from "express";
 import { db, modbusReadingsTable } from "@workspace/db";
@@ -9,100 +8,13 @@ import {
   ListModbusReadingsResponse,
 } from "@workspace/api-zod";
 import { decodeModbusPayload } from "../modbus-decoder";
+import { authenticateDeviceRequest } from "../lib/device-auth";
 
 const router: IRouter = Router();
-const DEVICE_TOKEN_ENV = "MODBUS_INGEST_TOKEN";
-const DEVICE_TOKEN_PREVIOUS_ENV = "MODBUS_INGEST_TOKEN_PREVIOUS";
 
 const getSource = (req: Request) => {
   const forwardedFor = req.get("x-forwarded-for");
   return forwardedFor?.split(",")[0]?.trim() || req.ip || null;
-};
-
-const extractBearerToken = (authorization: string | undefined) => {
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(" ");
-  return scheme?.toLowerCase() === "bearer" && token ? token.trim() : null;
-};
-
-const tokensMatch = (candidate: string, expected: string) => {
-  const candidateBuffer = Buffer.from(candidate);
-  const expectedBuffer = Buffer.from(expected);
-  return (
-    candidateBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(candidateBuffer, expectedBuffer)
-  );
-};
-
-const parseTokenList = (raw: string | undefined): string[] => {
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-};
-
-type TokenSlot = "current" | "previous";
-
-const getAcceptedTokens = (): { slot: TokenSlot; token: string }[] => {
-  const current = process.env[DEVICE_TOKEN_ENV]?.trim();
-  const previous = parseTokenList(process.env[DEVICE_TOKEN_PREVIOUS_ENV]);
-
-  const tokens: { slot: TokenSlot; token: string }[] = [];
-  const seen = new Set<string>();
-
-  if (current) {
-    tokens.push({ slot: "current", token: current });
-    seen.add(current);
-  }
-
-  for (const token of previous) {
-    if (seen.has(token)) continue;
-    tokens.push({ slot: "previous", token });
-    seen.add(token);
-  }
-
-  return tokens;
-};
-
-type AuthResult =
-  | { ok: true; slot: TokenSlot }
-  | { ok: false; status: 401 | 503; error: string };
-
-const authenticateDeviceRequest = (req: Request): AuthResult => {
-  const acceptedTokens = getAcceptedTokens();
-
-  if (acceptedTokens.length === 0) {
-    return {
-      ok: false,
-      status: 503,
-      error: "Device ingest token is not configured.",
-    };
-  }
-
-  const providedToken =
-    req.get("x-device-key")?.trim() ||
-    extractBearerToken(req.get("authorization"));
-
-  if (!providedToken) {
-    return {
-      ok: false,
-      status: 401,
-      error: "Unauthorized: missing or invalid device token.",
-    };
-  }
-
-  for (const { slot, token } of acceptedTokens) {
-    if (tokensMatch(providedToken, token)) {
-      return { ok: true, slot };
-    }
-  }
-
-  return {
-    ok: false,
-    status: 401,
-    error: "Unauthorized: missing or invalid device token.",
-  };
 };
 
 router.get("/modbus/readings", async (req, res): Promise<void> => {
