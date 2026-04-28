@@ -608,6 +608,7 @@ export default function Dashboard() {
   const [customEnd, setCustomEnd] = useState<string>("");
   const [nowTick, setNowTick] = useState(() => Date.now());
   const DEFAULT_STALENESS_THRESHOLD = 30;
+  const DEFAULT_COOLDOWN_MINUTES = 60;
   const [thresholdSaveError, setThresholdSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -705,42 +706,104 @@ export default function Dashboard() {
     },
   });
   const siteThresholdsByScope = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<
+      string,
+      { thresholdMinutes: number; cooldownMinutes: number }
+    >();
     (siteThresholdsData?.thresholds ?? []).forEach((entry) => {
-      map.set(entry.siteId, entry.thresholdMinutes);
+      map.set(entry.siteId, {
+        thresholdMinutes: entry.thresholdMinutes,
+        cooldownMinutes: entry.cooldownMinutes,
+      });
     });
     return map;
   }, [siteThresholdsData]);
-  const stalenessThresholdMinutes = currentSite
-    ? siteThresholdsByScope.get(currentSite.id) ?? DEFAULT_STALENESS_THRESHOLD
-    : DEFAULT_STALENESS_THRESHOLD;
+  const currentSiteOverride = currentSite
+    ? siteThresholdsByScope.get(currentSite.id)
+    : undefined;
+  const stalenessThresholdMinutes =
+    currentSiteOverride?.thresholdMinutes ?? DEFAULT_STALENESS_THRESHOLD;
+  const cooldownMinutesValue =
+    currentSiteOverride?.cooldownMinutes ?? DEFAULT_COOLDOWN_MINUTES;
   const siteHasThresholdOverride =
     !!currentSite && siteThresholdsByScope.has(currentSite.id);
-  const setStalenessThresholdMinutes = async (value: number) => {
+  type SiteThresholdsCache = {
+    thresholds: {
+      siteId: string;
+      thresholdMinutes: number;
+      cooldownMinutes: number;
+      updatedAt: string;
+    }[];
+  };
+  const saveSiteOverride = async (patch: {
+    thresholdMinutes?: number;
+    cooldownMinutes?: number;
+  }) => {
     if (!currentSite) return;
     setThresholdSaveError(null);
     const targetSiteId = currentSite.id;
+    const queryKey = getListSiteStalenessThresholdsQueryKey();
+    // Read the freshest cached list — including any optimistic update from a
+    // sibling edit that hasn't been confirmed by the server yet — so quick
+    // consecutive edits to threshold + cooldown don't overwrite each other
+    // with values derived from the last refetch.
+    const cached = queryClient.getQueryData<SiteThresholdsCache>(queryKey);
+    const existing = cached?.thresholds.find((t) => t.siteId === targetSiteId);
+    const hasOverrideNow = !!existing;
+    const merged = {
+      thresholdMinutes:
+        patch.thresholdMinutes ??
+        existing?.thresholdMinutes ??
+        DEFAULT_STALENESS_THRESHOLD,
+      cooldownMinutes:
+        patch.cooldownMinutes ??
+        existing?.cooldownMinutes ??
+        DEFAULT_COOLDOWN_MINUTES,
+    };
+    const isAllDefault =
+      merged.thresholdMinutes === DEFAULT_STALENESS_THRESHOLD &&
+      merged.cooldownMinutes === DEFAULT_COOLDOWN_MINUTES;
+    const willDelete = isAllDefault && hasOverrideNow;
+    const willUpsert = !isAllDefault || hasOverrideNow;
+    // Optimistically update the cache so a second rapid edit (e.g. operator
+    // changes the cooldown right after the threshold) merges against our
+    // pending values rather than the stale server snapshot.
+    const optimisticList: SiteThresholdsCache = {
+      thresholds: willDelete
+        ? (cached?.thresholds ?? []).filter((t) => t.siteId !== targetSiteId)
+        : [
+            ...(cached?.thresholds ?? []).filter(
+              (t) => t.siteId !== targetSiteId,
+            ),
+            ...(willUpsert
+              ? [
+                  {
+                    siteId: targetSiteId,
+                    thresholdMinutes: merged.thresholdMinutes,
+                    cooldownMinutes: merged.cooldownMinutes,
+                    updatedAt: new Date().toISOString(),
+                  },
+                ]
+              : []),
+          ],
+    };
+    queryClient.setQueryData(queryKey, optimisticList);
     try {
-      // Read the freshest cached list rather than the closure-captured
-      // `siteHasThresholdOverride` so quick consecutive edits don't decide
-      // delete-vs-upsert from stale render state.
-      const cached = queryClient.getQueryData<{
-        thresholds: { siteId: string; thresholdMinutes: number }[];
-      }>(getListSiteStalenessThresholdsQueryKey());
-      const hasOverrideNow =
-        cached?.thresholds.some((t) => t.siteId === targetSiteId) ?? false;
-      if (value === DEFAULT_STALENESS_THRESHOLD && hasOverrideNow) {
+      if (willDelete) {
         await deleteSiteStalenessThreshold(targetSiteId);
-      } else if (value !== DEFAULT_STALENESS_THRESHOLD || hasOverrideNow) {
+      } else if (willUpsert) {
         await upsertSiteStalenessThreshold({
           siteId: targetSiteId,
-          thresholdMinutes: value,
+          thresholdMinutes: merged.thresholdMinutes,
+          cooldownMinutes: merged.cooldownMinutes,
         });
       }
-      await queryClient.invalidateQueries({
-        queryKey: getListSiteStalenessThresholdsQueryKey(),
-      });
+      await queryClient.invalidateQueries({ queryKey });
     } catch (err) {
+      // Roll the cache back to what the server last told us so the UI doesn't
+      // keep showing the failed optimistic value.
+      if (cached) queryClient.setQueryData(queryKey, cached);
+      else await queryClient.invalidateQueries({ queryKey });
       const message =
         err instanceof Error ? err.message : "Failed to save threshold.";
       setThresholdSaveError(
@@ -750,6 +813,10 @@ export default function Dashboard() {
       );
     }
   };
+  const setStalenessThresholdMinutes = (value: number) =>
+    saveSiteOverride({ thresholdMinutes: value });
+  const setCooldownMinutes = (value: number) =>
+    saveSiteOverride({ cooldownMinutes: value });
 
   // Sync device→site mappings to the server so the background staleness
   // monitor can apply per-site thresholds/cooldowns. The endpoint is
@@ -1219,11 +1286,38 @@ export default function Dashboard() {
                   </select>
                   <span className="text-[11px] text-muted-foreground">
                     Per-site setting, saved on the server. Devices warn when no payload arrives for this long; faulted at 3×.
-                    {siteHasThresholdOverride ? " Picking the default clears the override." : ""}
+                    {siteHasThresholdOverride ? " The override is cleared once both threshold and cooldown are back to their defaults." : ""}
                   </span>
                   {thresholdSaveError ? (
                     <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
                   ) : null}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="staleness-cooldown" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Resend cooldown{currentSite ? ` (${siteBlueprint.siteName})` : ""}
+                  </label>
+                  <select
+                    id="staleness-cooldown"
+                    className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
+                    value={cooldownMinutesValue}
+                    disabled={!currentSite}
+                    onChange={(event) => {
+                      void setCooldownMinutes(Number(event.target.value));
+                    }}
+                  >
+                    {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                      <option key={minutes} value={minutes}>
+                        {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                        {minutes === DEFAULT_COOLDOWN_MINUTES ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] text-muted-foreground">
+                    Wait at least this long before sending another alert for the same silent device.
+                    {siteHasThresholdOverride
+                      ? " The override is cleared once both threshold and cooldown are back to their defaults."
+                      : ""}
+                  </span>
                 </div>
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
