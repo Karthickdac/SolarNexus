@@ -37,6 +37,7 @@ import {
 import { format, formatDistanceToNow } from "date-fns";
 import {
   deleteSiteStalenessThreshold,
+  getListDeviceSiteAssignmentsQueryKey,
   getListModbusReadingsQueryKey,
   getListSiteStalenessThresholdsQueryKey,
   replaceSiteDeviceAssignments,
@@ -838,6 +839,7 @@ export default function Dashboard() {
     let cancelled = false;
     const debounce = setTimeout(() => {
       void (async () => {
+        let anySucceeded = false;
         for (const site of visibleSites) {
           if (cancelled) return;
           const deviceIds = Array.from(
@@ -850,6 +852,7 @@ export default function Dashboard() {
           );
           try {
             await replaceSiteDeviceAssignments(site.id, { deviceIds });
+            anySucceeded = true;
           } catch (err) {
             // eslint-disable-next-line no-console
             console.warn(
@@ -857,6 +860,12 @@ export default function Dashboard() {
               err,
             );
           }
+        }
+        if (!cancelled && anySucceeded) {
+          // Refresh the coverage panel so operators see the new mapping.
+          await queryClient.invalidateQueries({
+            queryKey: getListDeviceSiteAssignmentsQueryKey(),
+          });
         }
       })();
     }, 1000);
@@ -1594,7 +1603,12 @@ export default function Dashboard() {
             )}
 
             {activeView === "alerts" && (
-              <AlertsPanel />
+              <AlertsPanel
+                sites={visibleSites.map((s) => ({
+                  id: s.id,
+                  siteName: s.siteName,
+                }))}
+              />
             )}
 
             {activeView === "config" && (

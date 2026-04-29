@@ -5,9 +5,15 @@ import { Bell } from "lucide-react";
 import {
   getGetAlertPreferencesQueryKey,
   getListAlertEventsQueryKey,
+  getListDeviceSiteAssignmentsQueryKey,
+  getListModbusReadingsQueryKey,
   listAlertEvents,
+  listDeviceSiteAssignments,
+  listModbusReadings,
   useGetAlertPreferences,
   useListAlertEvents,
+  useListDeviceSiteAssignments,
+  useListModbusReadings,
   useSendTestAlert,
   useUpdateAlertPreferences,
   useEvaluateAlertsNow,
@@ -146,7 +152,9 @@ function AdminTokenField() {
   );
 }
 
-export function AlertsPanel() {
+export type AlertsPanelSite = { id: string; siteName: string };
+
+export function AlertsPanel({ sites }: { sites?: AlertsPanelSite[] } = {}) {
   const queryClient = useQueryClient();
   const prefsQuery = useGetAlertPreferences();
   const eventsQuery = useListAlertEvents(
@@ -155,6 +163,24 @@ export function AlertsPanel() {
       query: {
         queryKey: getListAlertEventsQueryKey({ limit: 50 }),
         queryFn: ({ signal }) => listAlertEvents({ limit: 50 }, { signal }),
+        refetchInterval: 30_000,
+      },
+    },
+  );
+  const assignmentsQuery = useListDeviceSiteAssignments({
+    query: {
+      queryKey: getListDeviceSiteAssignmentsQueryKey(),
+      queryFn: ({ signal }) => listDeviceSiteAssignments({ signal }),
+      refetchInterval: 30_000,
+    },
+  });
+  const reportingDevicesQuery = useListModbusReadings(
+    { limit: 100 },
+    {
+      query: {
+        queryKey: getListModbusReadingsQueryKey({ limit: 100 }),
+        queryFn: ({ signal }) =>
+          listModbusReadings({ limit: 100 }, { signal }),
         refetchInterval: 30_000,
       },
     },
@@ -232,6 +258,45 @@ export function AlertsPanel() {
     await invalidate();
   };
 
+  const assignments = assignmentsQuery.data?.assignments ?? [];
+  const reportingDeviceIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const reading of reportingDevicesQuery.data?.readings ?? []) {
+      set.add(reading.deviceId);
+    }
+    return Array.from(set).sort();
+  }, [reportingDevicesQuery.data]);
+
+  const coverage = useMemo(() => {
+    const bySite = new Map<string, string[]>();
+    for (const a of assignments) {
+      const list = bySite.get(a.siteId) ?? [];
+      list.push(a.deviceId);
+      bySite.set(a.siteId, list);
+    }
+    for (const list of bySite.values()) list.sort();
+
+    const knownIds = new Set<string>();
+    if (sites) for (const s of sites) knownIds.add(s.id);
+    for (const a of assignments) knownIds.add(a.siteId);
+
+    const rows = Array.from(knownIds).map((id) => {
+      const known = sites?.find((s) => s.id === id);
+      return {
+        id,
+        siteName: known?.siteName ?? id,
+        deviceIds: bySite.get(id) ?? [],
+      };
+    });
+    rows.sort((a, b) => a.siteName.localeCompare(b.siteName));
+
+    const assignedSet = new Set(assignments.map((a) => a.deviceId));
+    const unassigned = reportingDeviceIds.filter((id) => !assignedSet.has(id));
+    return { rows, unassigned };
+  }, [assignmentsQuery.data, reportingDeviceIds, sites]);
+
+  const events = eventsQuery.data?.events ?? [];
+
   if (prefsQuery.isLoading || !form) {
     return (
       <Card>
@@ -251,8 +316,6 @@ export function AlertsPanel() {
       </Card>
     );
   }
-
-  const events = eventsQuery.data?.events ?? [];
 
   return (
     <div className="space-y-5">
@@ -504,6 +567,126 @@ export function AlertsPanel() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Device → site coverage</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            What the staleness evaluator currently believes about each site.
+            Sites with their own assignments use the per-site threshold and
+            cooldown overrides; devices not assigned to any site fall back to
+            the global notification settings.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {assignmentsQuery.isLoading ? (
+            <div className="text-sm text-muted-foreground">
+              Loading device-to-site assignments…
+            </div>
+          ) : assignmentsQuery.isError ? (
+            <div className="text-sm text-red-600">
+              Could not load device-to-site assignments.
+            </div>
+          ) : coverage.rows.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No sites have synced device assignments yet. Once a super-admin
+              opens the dashboard with an admin token, each site's blueprint
+              devices are pushed here automatically.
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {coverage.rows.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex flex-col gap-2 py-3 md:flex-row md:items-start md:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold">{row.siteName}</div>
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                      {row.id}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 md:max-w-[70%] md:justify-end">
+                    {row.deviceIds.length === 0 ? (
+                      <span className="text-xs italic text-muted-foreground">
+                        No devices assigned — this site uses the global
+                        threshold.
+                      </span>
+                    ) : (
+                      row.deviceIds.map((deviceId) => (
+                        <Badge
+                          key={deviceId}
+                          variant="outline"
+                          className="font-mono text-[11px]"
+                        >
+                          {deviceId}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="rounded-md border bg-muted/40 p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Reporting devices not assigned to any site
+            </div>
+            {reportingDevicesQuery.isLoading ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Loading recent readings…
+              </p>
+            ) : reportingDevicesQuery.isError ? (
+              <p className="mt-2 text-xs text-red-600">
+                Could not load recent readings, so unassigned devices can't
+                be checked right now.
+              </p>
+            ) : reportingDeviceIds.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                No devices have reported readings recently.
+              </p>
+            ) : coverage.unassigned.length === 0 ? (
+              <p className="mt-2 text-xs text-emerald-600">
+                Every device that recently reported data is mapped to a site.
+              </p>
+            ) : (
+              <>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  These devices have sent recent readings but are not in any
+                  site's assignment list, so they only get the global
+                  staleness alert settings.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {coverage.unassigned.map((deviceId) => (
+                    <Badge
+                      key={deviceId}
+                      className="bg-amber-500 font-mono text-[11px] text-white"
+                    >
+                      {deviceId}
+                    </Badge>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await queryClient.invalidateQueries({
+                  queryKey: getListDeviceSiteAssignmentsQueryKey(),
+                });
+              }}
+            >
+              Refresh assignments
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
