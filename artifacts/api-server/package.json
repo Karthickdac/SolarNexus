@@ -12,6 +12,7 @@
     "test:device-auth": "node --experimental-strip-types --test src/lib/device-auth.test.ts",
     "test:alerts-service": "node --experimental-strip-types --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"./src/lib/test-loader.mjs\", pathToFileURL(\"./\"));' --test src/lib/alerts-service.test.ts",
     "test:alerts-routes": "node --experimental-strip-types --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"./src/lib/test-loader.mjs\", pathToFileURL(\"./\"));' --test src/routes/alerts.test.ts",
+    "test:site-devices": "node --experimental-strip-types --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"./src/lib/test-loader.mjs\", pathToFileURL(\"./\"));' --test src/lib/alerts-service.test.ts src/routes/alerts.test.ts",
     "test:alerts": "pnpm run test:alerts-service && pnpm run test:alerts-routes",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

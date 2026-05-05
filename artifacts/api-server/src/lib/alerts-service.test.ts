@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, afterEach, before, describe, it } from "node:test";
-import { sql } from "drizzle-orm";
-import { db, notificationSettingsTable } from "@workspace/db";
+import { inArray, sql } from "drizzle-orm";
 import {
+  db,
+  deviceSiteAssignmentsTable,
+  notificationSettingsTable,
+} from "@workspace/db";
+import {
+  clearSiteDeviceAssignments,
   deleteSiteThreshold,
+  isValidDeviceId,
   isValidSiteId,
+  listDeviceSiteAssignments,
   listSiteThresholds,
+  replaceSiteDeviceAssignments,
   upsertSiteThreshold,
 } from "./alerts-service";
 import { logger } from "./logger";
@@ -195,6 +203,245 @@ describe("listSiteThresholds", () => {
         (call.context as { scope?: string }).scope === malformedScope,
     );
     assert.equal(warnedAboutMalformed, true);
+  });
+});
+
+const uniqueDeviceId = (label: string) =>
+  `dev-${label}-${randomBytes(4).toString("hex")}`;
+
+const seededDeviceIds = new Set<string>();
+
+const trackDevice = (deviceId: string) => {
+  seededDeviceIds.add(deviceId);
+  return deviceId;
+};
+
+const cleanupAssignments = async () => {
+  if (seededDeviceIds.size === 0) return;
+  const ids = Array.from(seededDeviceIds);
+  await db
+    .delete(deviceSiteAssignmentsTable)
+    .where(inArray(deviceSiteAssignmentsTable.deviceId, ids));
+  seededDeviceIds.clear();
+};
+
+const listAssignmentsForSite = async (siteId: string) => {
+  const rows = await listDeviceSiteAssignments();
+  return rows.filter((row) => row.siteId === siteId);
+};
+
+describe("isValidDeviceId", () => {
+  it("accepts allowed characters", () => {
+    for (const id of [
+      "a",
+      "Device_1",
+      "rack.42",
+      "inv-01",
+      "ns:dev:1",
+      "x".repeat(128),
+    ]) {
+      assert.equal(isValidDeviceId(id), true, `expected ${id} to be valid`);
+    }
+  });
+
+  it("rejects empty, too-long, or disallowed-character ids", () => {
+    for (const id of [
+      "",
+      "x".repeat(129),
+      "has space",
+      "comma,bad",
+      "slash/bad",
+      "unicode-✓",
+    ]) {
+      assert.equal(isValidDeviceId(id), false, `expected ${id} to be invalid`);
+    }
+  });
+});
+
+describe("replaceSiteDeviceAssignments", () => {
+  afterEach(cleanupAssignments);
+
+  it("rejects an invalid siteId before touching the database", async () => {
+    await assert.rejects(
+      () => replaceSiteDeviceAssignments("bad id!", []),
+      /Invalid siteId/,
+    );
+  });
+
+  it("rejects an invalid deviceId in the payload", async () => {
+    const siteId = uniqueSiteId("invdev");
+    const goodDevice = trackDevice(uniqueDeviceId("good"));
+    await assert.rejects(
+      () =>
+        replaceSiteDeviceAssignments(siteId, [goodDevice, "bad device id!"]),
+      /Invalid deviceId/,
+    );
+    // Atomic guarantee: the bad entry must abort the whole operation, so the
+    // good device should *not* have been written. The validation runs before
+    // the transaction opens, but lock that contract in with a check.
+    const after = await listAssignmentsForSite(siteId);
+    assert.equal(after.length, 0);
+  });
+
+  it("inserts new assignments and returns the resulting rows", async () => {
+    const siteId = uniqueSiteId("insert");
+    const a = trackDevice(uniqueDeviceId("a"));
+    const b = trackDevice(uniqueDeviceId("b"));
+    const result = await replaceSiteDeviceAssignments(siteId, [a, b]);
+    assert.equal(result.length, 2);
+    assert.deepEqual(
+      result.map((r) => r.deviceId).sort(),
+      [a, b].sort(),
+    );
+    for (const row of result) {
+      assert.equal(row.siteId, siteId);
+      assert.ok(row.updatedAt instanceof Date);
+    }
+  });
+
+  it("deduplicates and trims deviceIds in the input", async () => {
+    const siteId = uniqueSiteId("dedupe");
+    const a = trackDevice(uniqueDeviceId("a"));
+    const result = await replaceSiteDeviceAssignments(siteId, [
+      a,
+      `  ${a}  `,
+      "",
+      "   ",
+    ]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0]?.deviceId, a);
+  });
+
+  it("moves a device from one site to another on a subsequent PUT", async () => {
+    const siteA = uniqueSiteId("from");
+    const siteB = uniqueSiteId("to");
+    const device = trackDevice(uniqueDeviceId("mover"));
+
+    await replaceSiteDeviceAssignments(siteA, [device]);
+    const inA = await listAssignmentsForSite(siteA);
+    assert.equal(inA.length, 1);
+    assert.equal(inA[0]?.deviceId, device);
+
+    // PUTting the same device under a different site reassigns it because
+    // deviceId is the primary key of the assignments table.
+    await replaceSiteDeviceAssignments(siteB, [device]);
+    const inAAfter = await listAssignmentsForSite(siteA);
+    const inBAfter = await listAssignmentsForSite(siteB);
+    assert.equal(inAAfter.length, 0, "device should no longer be on siteA");
+    assert.equal(inBAfter.length, 1);
+    assert.equal(inBAfter[0]?.deviceId, device);
+    assert.equal(inBAfter[0]?.siteId, siteB);
+  });
+
+  it("removes devices that are no longer in the payload", async () => {
+    const siteId = uniqueSiteId("drop");
+    const keep = trackDevice(uniqueDeviceId("keep"));
+    const drop = trackDevice(uniqueDeviceId("drop"));
+
+    await replaceSiteDeviceAssignments(siteId, [keep, drop]);
+    const before = await listAssignmentsForSite(siteId);
+    assert.equal(before.length, 2);
+
+    await replaceSiteDeviceAssignments(siteId, [keep]);
+    const after = await listAssignmentsForSite(siteId);
+    assert.equal(after.length, 1);
+    assert.equal(after[0]?.deviceId, keep);
+  });
+
+  it("clears all assignments for the site when given an empty array", async () => {
+    const siteId = uniqueSiteId("empty");
+    const a = trackDevice(uniqueDeviceId("a"));
+    const b = trackDevice(uniqueDeviceId("b"));
+    await replaceSiteDeviceAssignments(siteId, [a, b]);
+
+    const cleared = await replaceSiteDeviceAssignments(siteId, []);
+    assert.equal(cleared.length, 0);
+
+    const remaining = await listAssignmentsForSite(siteId);
+    assert.equal(remaining.length, 0);
+  });
+
+  it("does not touch other sites' assignments when replacing one site", async () => {
+    const siteA = uniqueSiteId("isoA");
+    const siteB = uniqueSiteId("isoB");
+    const aDevice = trackDevice(uniqueDeviceId("a"));
+    const bDevice = trackDevice(uniqueDeviceId("b"));
+
+    await replaceSiteDeviceAssignments(siteA, [aDevice]);
+    await replaceSiteDeviceAssignments(siteB, [bDevice]);
+
+    // Replacing siteA with an empty array must leave siteB untouched.
+    await replaceSiteDeviceAssignments(siteA, []);
+    const inB = await listAssignmentsForSite(siteB);
+    assert.equal(inB.length, 1);
+    assert.equal(inB[0]?.deviceId, bDevice);
+  });
+});
+
+describe("clearSiteDeviceAssignments", () => {
+  afterEach(cleanupAssignments);
+
+  it("rejects an invalid siteId", async () => {
+    await assert.rejects(
+      () => clearSiteDeviceAssignments("bad id!"),
+      /Invalid siteId/,
+    );
+  });
+
+  it("removes all assignments for the given site", async () => {
+    const siteId = uniqueSiteId("clear");
+    const a = trackDevice(uniqueDeviceId("a"));
+    const b = trackDevice(uniqueDeviceId("b"));
+    await replaceSiteDeviceAssignments(siteId, [a, b]);
+
+    await clearSiteDeviceAssignments(siteId);
+    const remaining = await listAssignmentsForSite(siteId);
+    assert.equal(remaining.length, 0);
+  });
+
+  it("is idempotent on repeat calls and on sites that never had assignments", async () => {
+    const siteId = uniqueSiteId("idemp");
+    // Never seeded, must not throw.
+    await clearSiteDeviceAssignments(siteId);
+    await clearSiteDeviceAssignments(siteId);
+  });
+
+  it("does not affect assignments for a different site", async () => {
+    const siteA = uniqueSiteId("clrA");
+    const siteB = uniqueSiteId("clrB");
+    const aDevice = trackDevice(uniqueDeviceId("a"));
+    const bDevice = trackDevice(uniqueDeviceId("b"));
+    await replaceSiteDeviceAssignments(siteA, [aDevice]);
+    await replaceSiteDeviceAssignments(siteB, [bDevice]);
+
+    await clearSiteDeviceAssignments(siteA);
+    const inA = await listAssignmentsForSite(siteA);
+    const inB = await listAssignmentsForSite(siteB);
+    assert.equal(inA.length, 0);
+    assert.equal(inB.length, 1);
+    assert.equal(inB[0]?.deviceId, bDevice);
+  });
+});
+
+describe("listDeviceSiteAssignments", () => {
+  afterEach(cleanupAssignments);
+
+  it("returns every persisted assignment", async () => {
+    const siteA = uniqueSiteId("listA");
+    const siteB = uniqueSiteId("listB");
+    const a = trackDevice(uniqueDeviceId("a"));
+    const b = trackDevice(uniqueDeviceId("b"));
+    await replaceSiteDeviceAssignments(siteA, [a]);
+    await replaceSiteDeviceAssignments(siteB, [b]);
+
+    const all = await listDeviceSiteAssignments();
+    const ours = all.filter(
+      (row) => row.deviceId === a || row.deviceId === b,
+    );
+    assert.equal(ours.length, 2);
+    const byDevice = new Map(ours.map((row) => [row.deviceId, row.siteId]));
+    assert.equal(byDevice.get(a), siteA);
+    assert.equal(byDevice.get(b), siteB);
   });
 });
 
