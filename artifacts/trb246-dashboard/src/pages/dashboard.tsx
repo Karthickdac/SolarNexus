@@ -702,6 +702,16 @@ export default function Dashboard() {
   }, [deviceFilter, knownDeviceIds]);
 
   const { users, currentUser, currentUserId, setCurrentUserId, addUser, updateUser, deleteUser } = useUsers();
+  const [sessionUser, setSessionUser] = useState(() => getStoredUser());
+  useEffect(() => {
+    const sync = () => setSessionUser(getStoredUser());
+    window.addEventListener("storage", sync);
+    window.addEventListener("solarnexus:auth-changed", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("solarnexus:auth-changed", sync);
+    };
+  }, []);
   const allowedSiteIds = currentUser?.role === "super-admin" ? ("all" as const) : (currentUser?.siteIds ?? []);
   const { sites, visibleSites, currentSite, currentSiteId, setCurrentSiteId, addSite, updateSite, deleteSite, setBlueprintForSite } =
     useSites(allowedSiteIds);
@@ -1094,20 +1104,11 @@ export default function Dashboard() {
 
           <div className="mt-6 rounded-xl border bg-background p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Signed in as</div>
-            <div className="mt-2 font-semibold">{currentUser?.name ?? "—"}</div>
-            <div className="text-xs text-muted-foreground">{currentUser?.email}</div>
-            <Badge className="mt-2" variant={isSuperAdmin ? "default" : "outline"}>{currentUser?.role ?? "—"}</Badge>
-            {users.length > 1 && (
-              <select
-                className="mt-3 h-9 w-full rounded-md border bg-background px-2 text-sm"
-                value={currentUserId}
-                onChange={(event) => setCurrentUserId(event.target.value)}
-              >
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.name} ({user.role})</option>
-                ))}
-              </select>
-            )}
+            <div className="mt-2 font-semibold" data-testid="signed-in-name">{sessionUser?.name ?? currentUser?.name ?? "—"}</div>
+            <div className="text-xs text-muted-foreground" data-testid="signed-in-email">{sessionUser?.email ?? currentUser?.email ?? ""}</div>
+            <Badge className="mt-2" variant={(sessionUser?.role ?? currentUser?.role) === "super-admin" ? "default" : "outline"} data-testid="signed-in-role">
+              {sessionUser?.role ?? currentUser?.role ?? "—"}
+            </Badge>
           </div>
 
           <div className="mt-4 rounded-xl border bg-background p-4">
