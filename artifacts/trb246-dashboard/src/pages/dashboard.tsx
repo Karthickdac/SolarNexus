@@ -1136,21 +1136,11 @@ export default function Dashboard() {
           </div>
         </aside>
         <main className="min-w-0 px-4 py-5 md:px-7 lg:px-8">
-          <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+          <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-3xl font-bold tracking-tight md:text-4xl">SolarNexus</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Blueprint-driven simulation, live string status tracking, and Modbus telemetry reporting.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">{operationalStrings} live</Badge>
-                <Badge className="bg-amber-500 text-white hover:bg-amber-500">{activeWarnings} warning{activeWarnings === 1 ? "" : "s"}</Badge>
-                <Badge className="bg-red-600 text-white hover:bg-red-600">{activeFaults} fault{activeFaults === 1 ? "" : "s"}</Badge>
-              </div>
-              <p className={`mt-3 text-xs ${latestIsStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                Last reading {lastReceivedDisplay}
-                {latestIsStale ? ` — exceeds ${stalenessThresholdMinutes} min staleness threshold` : ""}
-                <span className="text-muted-foreground"> · refreshed {lastRefreshed}</span>
               </p>
             </div>
             <div className="flex items-center gap-2 print:hidden">
@@ -1204,6 +1194,41 @@ export default function Dashboard() {
           </header>
 
           <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Card className="border-l-4 border-l-emerald-500">
+                <CardContent className="px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Live strings</p>
+                  <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="kpi-live">{operationalStrings}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">operational right now</p>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-amber-500">
+                <CardContent className="px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Warnings</p>
+                  <p className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="kpi-warnings">{activeWarnings}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">active warning{activeWarnings === 1 ? "" : "s"}</p>
+                </CardContent>
+              </Card>
+              <Card className="border-l-4 border-l-red-500">
+                <CardContent className="px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Faults</p>
+                  <p className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400" data-testid="kpi-faults">{activeFaults}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">device{activeFaults === 1 ? "" : "s"} faulted</p>
+                </CardContent>
+              </Card>
+              <Card className={`border-l-4 ${latestIsStale ? "border-l-amber-500" : "border-l-sky-500"}`}>
+                <CardContent className="px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Last reading</p>
+                  <p className={`mt-1 text-base font-semibold ${latestIsStale ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`} data-testid="kpi-last-reading">
+                    {lastReceivedDisplay}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {latestIsStale ? `stale (>${stalenessThresholdMinutes} min)` : `refreshed ${lastRefreshed}`}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card className="print:hidden">
               <CardContent className="flex flex-wrap items-end gap-4 px-5 py-4">
                 <div className="flex flex-col gap-1">
@@ -1304,65 +1329,6 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
-                <div className="flex basis-full flex-col gap-2 rounded-lg border bg-muted/30 p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      Alert thresholds{currentSite ? ` · ${siteBlueprint.siteName}` : ""}
-                    </span>
-                    {siteHasThresholdOverride ? (
-                      <span className="text-[11px] text-muted-foreground">Custom override active — cleared automatically when both fields return to default.</span>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="staleness-threshold" className="text-[11px] font-medium text-muted-foreground">
-                        Warn when stale after
-                      </label>
-                      <select
-                        id="staleness-threshold"
-                        className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
-                        value={stalenessThresholdMinutes}
-                        disabled={!currentSite}
-                        onChange={(event) => {
-                          void setStalenessThresholdMinutes(Number(event.target.value));
-                        }}
-                      >
-                        {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
-                          <option key={minutes} value={minutes}>
-                            {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
-                            {minutes === DEFAULT_STALENESS_THRESHOLD ? " (default)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[11px] text-muted-foreground">Faulted at 3× this value.</span>
-                      {thresholdSaveError ? (
-                        <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label htmlFor="staleness-cooldown" className="text-[11px] font-medium text-muted-foreground">
-                        Resend cooldown
-                      </label>
-                      <select
-                        id="staleness-cooldown"
-                        className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
-                        value={cooldownMinutesValue}
-                        disabled={!currentSite}
-                        onChange={(event) => {
-                          void setCooldownMinutes(Number(event.target.value));
-                        }}
-                      >
-                        {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
-                          <option key={minutes} value={minutes}>
-                            {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
-                            {minutes === DEFAULT_COOLDOWN_MINUTES ? " (default)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="text-[11px] text-muted-foreground">Minimum wait between repeat alerts for the same device.</span>
-                    </div>
-                  </div>
-                </div>
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
                   {deviceFilter !== "all" ? <> for <span className="font-mono text-foreground">{deviceFilter}</span></> : null}
@@ -1379,6 +1345,80 @@ export default function Dashboard() {
                   ) : null}
                   {rangeFilter === "custom" && customRangeError ? <> — custom range invalid, showing nothing</> : null}
                   .
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="print:hidden">
+              <CardContent className="px-5 py-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">
+                      Alert thresholds
+                      {currentSite ? <span className="ml-2 text-xs font-normal text-muted-foreground">· {siteBlueprint.siteName}</span> : null}
+                    </h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Control when this site warns about silent devices and how often repeat alerts are sent.
+                    </p>
+                  </div>
+                  {siteHasThresholdOverride ? (
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                      Custom override
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      Using defaults
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="staleness-threshold" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Warn when stale after
+                    </label>
+                    <select
+                      id="staleness-threshold"
+                      className="h-9 rounded-md border bg-background px-2 text-sm"
+                      value={stalenessThresholdMinutes}
+                      disabled={!currentSite}
+                      onChange={(event) => {
+                        void setStalenessThresholdMinutes(Number(event.target.value));
+                      }}
+                    >
+                      {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                        <option key={minutes} value={minutes}>
+                          {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                          {minutes === DEFAULT_STALENESS_THRESHOLD ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] text-muted-foreground">Device is marked faulted at 3× this value.</span>
+                    {thresholdSaveError ? (
+                      <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="staleness-cooldown" className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Resend cooldown
+                    </label>
+                    <select
+                      id="staleness-cooldown"
+                      className="h-9 rounded-md border bg-background px-2 text-sm"
+                      value={cooldownMinutesValue}
+                      disabled={!currentSite}
+                      onChange={(event) => {
+                        void setCooldownMinutes(Number(event.target.value));
+                      }}
+                    >
+                      {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                        <option key={minutes} value={minutes}>
+                          {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                          {minutes === DEFAULT_COOLDOWN_MINUTES ? " (default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] text-muted-foreground">Minimum wait between repeat alerts for the same device.</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1453,7 +1493,7 @@ export default function Dashboard() {
               </Card>
             )}
 
-            <div className="grid gap-2 rounded-xl border bg-card p-1 md:inline-grid md:grid-cols-6">
+            <nav className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1.5 print:hidden" aria-label="Dashboard sections">
               {[
                 { id: "overview", label: "Overview" },
                 { id: "simulation", label: "Simulation" },
@@ -1466,13 +1506,14 @@ export default function Dashboard() {
                   key={item.id}
                   type="button"
                   variant={activeView === item.id ? "default" : "ghost"}
-                  size="sm"
+                  className="flex-1 whitespace-nowrap text-sm font-medium"
                   onClick={() => setActiveView(item.id)}
+                  data-testid={`tab-${item.id}`}
                 >
                   {item.label}
                 </Button>
               ))}
-            </div>
+            </nav>
 
             {activeView === "overview" && (
             <div className="space-y-5">
