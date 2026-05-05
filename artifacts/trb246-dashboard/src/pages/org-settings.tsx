@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation } from "wouter";
+import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,16 +91,27 @@ export default function OrgSettingsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Organization settings
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {currentMembership?.orgName ?? "Default Organization"} ·{" "}
-          <Badge variant="outline" className="ml-1 capitalize">
-            you are {role}
-          </Badge>
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Organization settings
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {currentMembership?.orgName ?? "Default Organization"} ·{" "}
+            <Badge variant="outline" className="ml-1 capitalize">
+              you are {role}
+            </Badge>
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("/")}
+          data-testid="button-back-to-dashboard"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to dashboard
+        </Button>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => navigate(`/settings/${v}`)}>
