@@ -532,19 +532,16 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
                 </div>
               ))}
 
-              {/* Power-flow lines: animated dashes flow from strings → inverters → SCADA → Grid */}
-              <svg className="pointer-events-none absolute inset-0 h-full w-full">
-                <defs>
-                  <marker id="arrow-online" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("online")} />
-                  </marker>
-                  <marker id="arrow-warning" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("warning")} />
-                  </marker>
-                  <marker id="arrow-fault" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("fault")} />
-                  </marker>
-                </defs>
+              {/* Power-flow paths: animated bezier curves from strings → inverters → SCADA → Grid.
+                  Uses a 0–100 viewBox stretched to fit so we can express anchors and Bezier control
+                  points in the same coordinate space the panels use (percentages). vectorEffect keeps
+                  the stroke a constant pixel width regardless of the non-uniform stretch. */}
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+              >
+                {/* String → Inverter curves */}
                 {siteBlueprint.strings.map((string) => {
                   const inverter = siteBlueprint.inverters.find((item) => item.id === string.inverterId);
                   if (!inverter) return null;
@@ -552,61 +549,97 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
                   const lineStatus = runtime?.status ?? "fault";
                   const color = statusColor(lineStatus);
                   const animate = lineStatus !== "fault";
+
+                  // String panel: ~12% wide × 8% tall. Inverter: ~12% wide × 11% tall.
+                  // Anchor on whichever side faces the inverter so curves leave from the proper edge.
+                  const stringCenterX = string.x + 6;
+                  const inverterCenterX = inverter.x + 6;
+                  const fromRight = stringCenterX <= inverterCenterX;
+                  const sx = fromRight ? string.x + 12 : string.x;
+                  const sy = string.y + 4;
+                  const tx = fromRight ? inverter.x : inverter.x + 12;
+                  const ty = inverter.y + 5.5;
+                  const dx = tx - sx;
+                  const cx1 = sx + dx * 0.5;
+                  const cx2 = tx - dx * 0.5;
+                  const d = `M ${sx} ${sy} C ${cx1} ${sy}, ${cx2} ${ty}, ${tx} ${ty}`;
+
                   return (
-                    <line
-                      key={string.id}
-                      x1={`${string.x + 4}%`}
-                      y1={`${string.y + 3}%`}
-                      x2={`${inverter.x + 3}%`}
-                      y2={`${inverter.y + 3}%`}
-                      stroke={color}
-                      strokeWidth="1.6"
-                      strokeDasharray={lineStatus === "fault" ? "5 5" : "6 4"}
-                      opacity="0.78"
-                      markerEnd={`url(#arrow-${lineStatus})`}
-                    >
-                      {animate && (
-                        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.4s" repeatCount="indefinite" />
-                      )}
-                    </line>
+                    <g key={string.id}>
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeDasharray={lineStatus === "fault" ? "5 5" : "6 4"}
+                        opacity="0.85"
+                        vectorEffect="non-scaling-stroke"
+                      >
+                        {animate && (
+                          <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.4s" repeatCount="indefinite" />
+                        )}
+                      </path>
+                      {/* Junction dot at inverter anchor */}
+                      <circle cx={tx} cy={ty} r="0.6" fill={color} opacity="0.9" />
+                    </g>
                   );
                 })}
-                {/* Inverter → SCADA bus */}
+
+                {/* Inverter → SCADA bus (SCADA box is at left:82%, top:18%, w:12%, h ≈ 14%) */}
                 {siteBlueprint.inverters.map((inverter) => {
                   const status = inverterStatusById.get(inverter.id) ?? "fault";
                   const color = statusColor(status);
+                  const inverterCenterX = inverter.x + 6;
+                  const scadaCenterX = 82 + 6;
+                  const fromRight = inverterCenterX <= scadaCenterX;
+                  const sx = fromRight ? inverter.x + 12 : inverter.x;
+                  const sy = inverter.y + 5.5;
+                  const tx = fromRight ? 82 : 82 + 12;
+                  const ty = 25;
+                  const dx = tx - sx;
+                  const cx1 = sx + dx * 0.55;
+                  const cx2 = tx - dx * 0.55;
+                  const d = `M ${sx} ${sy} C ${cx1} ${sy}, ${cx2} ${ty}, ${tx} ${ty}`;
                   return (
-                    <line
-                      key={`inv-bus-${inverter.id}`}
-                      x1={`${inverter.x + 4}%`}
-                      y1={`${inverter.y + 3}%`}
-                      x2="86%"
-                      y2="26%"
-                      stroke={color}
-                      strokeWidth="1.8"
-                      strokeDasharray="6 4"
-                      opacity="0.6"
-                      markerEnd={`url(#arrow-${status})`}
-                    >
-                      {status !== "fault" && (
-                        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.6s" repeatCount="indefinite" />
-                      )}
-                    </line>
+                    <g key={`inv-bus-${inverter.id}`}>
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeDasharray="6 4"
+                        opacity="0.7"
+                        vectorEffect="non-scaling-stroke"
+                      >
+                        {status !== "fault" && (
+                          <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.6s" repeatCount="indefinite" />
+                        )}
+                      </path>
+                      <circle cx={tx} cy={ty} r="0.7" fill={color} opacity="0.9" />
+                    </g>
                   );
                 })}
-                {/* SCADA → Grid trunk */}
-                <line
-                  x1="86%" y1="28%" x2="86%" y2="62%"
-                  stroke={trunkColor}
-                  strokeWidth="3"
-                  strokeDasharray="8 4"
-                  opacity="0.85"
-                  markerEnd={`url(#arrow-${trunkStatus})`}
-                >
-                  {trunkStatus !== "fault" && (
-                    <animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite" />
-                  )}
-                </line>
+
+                {/* SCADA → Grid trunk (vertical drop on the right rail) */}
+                <g>
+                  <path
+                    d={`M 88 32 C 88 42, 88 52, 88 62`}
+                    fill="none"
+                    stroke={trunkColor}
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray="8 4"
+                    opacity="0.9"
+                    vectorEffect="non-scaling-stroke"
+                  >
+                    {trunkStatus !== "fault" && (
+                      <animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite" />
+                    )}
+                  </path>
+                  <circle cx={88} cy={62} r="0.9" fill={trunkColor} opacity="0.95" />
+                </g>
               </svg>
 
               {/* String panels — shaped like miniature PV modules */}
