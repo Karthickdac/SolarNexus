@@ -112,3 +112,47 @@ If a token is suspected to be compromised, you can skip step 2's grace period by
 - Development currently includes sample TRB246 readings for dashboard/report visualization; production deployments should seed or ingest real readings separately.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+
+## Multi-Tenant SaaS (Phase 1 — Foundations)
+
+SolarNexus is being converted from single-tenant admin-seeded auth into a
+multi-tenant SaaS in shippable phases (see `.local/session_plan.md` for the
+full 8-phase roadmap). Phase 1 lands the schema and auth surface only; data
+scoping, invitations, password reset, API keys, and usage limits are
+forthcoming phases that build on this foundation.
+
+### Schema additions (this phase)
+
+- **`organizations`** — `(id, slug unique, name, created_at, updated_at)`. A
+  bootstrap step on every server boot ensures a row with slug `default`
+  exists; legacy rows pre-dating multi-tenancy are scoped to it.
+- **`organization_memberships`** — `(user_id, org_id, role, created_at)`
+  with unique `(user_id, org_id)`. `role` is one of
+  `viewer | operator | admin | owner` (see `ORG_ROLES` in
+  `lib/db/src/schema/organizations.ts`). Use `roleAtLeast(role, "admin")`
+  for permission checks.
+- **`audit_log`** — `(org_id, actor_user_id, action, target_type,
+  target_id, metadata jsonb, created_at)`. Best-effort writes via
+  `recordAuditEvent(...)` in `org-service.ts` — failures are logged but
+  never roll back the calling business operation.
+
+### Bootstrap & backfill
+
+`seedDefaultAdmin()` (called once at API server startup) now also:
+1. Creates the default org if missing (race-safe via
+   `onConflictDoNothing` on the unique slug).
+2. Adds the seeded super-admin to the default org as `owner`.
+3. Backfills every other existing user into the default org, mapping
+   their app-level role to the least-privilege org role
+   (`super-admin → owner`, `operator → operator`, anything else →
+   `viewer`). `ensureMembership` only ever upgrades an existing role,
+   never downgrades.
+
+### Auth surface changes
+
+- `POST /api/auth/login` and `GET /api/auth/me` now include
+  `user.memberships: [{ orgId, orgSlug, orgName, role }]`. The desktop
+  client and dashboard can rely on this to discover the caller's org
+  context.
+- `auth.login` and `auth.logout` events are now recorded in `audit_log`
+  against the user's first org membership.

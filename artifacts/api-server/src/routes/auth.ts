@@ -4,6 +4,7 @@ import {
   loginWithPassword,
   revokeSession,
 } from "../lib/auth-service";
+import { getMembershipsForUser, recordAuditEvent } from "../lib/org-service";
 import { extractSessionToken, requireUserSession } from "../lib/admin-auth";
 import { logger } from "../lib/logger";
 
@@ -30,6 +31,14 @@ router.post("/auth/login", async (req, res, next) => {
       res.status(result.status).json({ error: result.error });
       return;
     }
+    const memberships = await getMembershipsForUser(result.user.id);
+    void recordAuditEvent({
+      orgId: memberships[0]?.orgId ?? null,
+      actorUserId: result.user.id,
+      action: "auth.login",
+      targetType: "user",
+      targetId: String(result.user.id),
+    });
     res.json({
       token: result.token,
       expiresAt: result.expiresAt.toISOString(),
@@ -39,6 +48,7 @@ router.post("/auth/login", async (req, res, next) => {
         name: result.user.name,
         role: result.user.role,
         siteIds: result.user.siteIds,
+        memberships,
       },
     });
   } catch (err) {
@@ -47,28 +57,45 @@ router.post("/auth/login", async (req, res, next) => {
   }
 });
 
-router.get("/auth/me", requireUserSession, (req, res) => {
-  const user = req.authenticatedUser;
-  if (!user) {
-    res.status(401).json({ error: "Not authenticated." });
-    return;
+router.get("/auth/me", requireUserSession, async (req, res, next) => {
+  try {
+    const user = req.authenticatedUser;
+    if (!user) {
+      res.status(401).json({ error: "Not authenticated." });
+      return;
+    }
+    const memberships = await getMembershipsForUser(user.id);
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        siteIds: user.siteIds,
+        memberships,
+      },
+    });
+  } catch (err) {
+    next(err);
   }
-  res.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      siteIds: user.siteIds,
-    },
-  });
 });
 
 router.post("/auth/logout", async (req, res, next) => {
   try {
     const token = extractSessionToken(req);
     if (token) {
+      const user = await findUserBySessionToken(token);
       await revokeSession(token);
+      if (user) {
+        const memberships = await getMembershipsForUser(user.id);
+        void recordAuditEvent({
+          orgId: memberships[0]?.orgId ?? null,
+          actorUserId: user.id,
+          action: "auth.logout",
+          targetType: "user",
+          targetId: String(user.id),
+        });
+      }
     }
     res.json({ ok: true });
   } catch (err) {

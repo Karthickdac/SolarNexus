@@ -4,6 +4,11 @@ import { and, desc, eq, gt } from "drizzle-orm";
 import { db, usersTable, sessionsTable } from "@workspace/db";
 import type { DbUser, AppUserRole } from "@workspace/db";
 import { logger } from "./logger";
+import {
+  ensureDefaultOrganization,
+  ensureMembership,
+  backfillExistingUsersIntoDefaultOrg,
+} from "./org-service";
 
 const scrypt = promisify(scryptCallback) as (
   password: string,
@@ -256,22 +261,48 @@ export async function seedDefaultAdmin(): Promise<void> {
     });
   }
 
+  // Make sure the default org exists before any seed/backfill runs so
+  // newly seeded admins land directly in it as owners.
+  let defaultOrgId: number | null = null;
+  try {
+    const org = await ensureDefaultOrganization();
+    defaultOrgId = org.id;
+  } catch (err) {
+    logger.warn({ err }, "Failed to ensure default organization");
+  }
+
   for (const candidate of candidates) {
     try {
       const existing = await findUserByEmail(candidate.email);
-      if (existing) continue;
-      await createUser({
-        email: candidate.email,
-        name: candidate.name,
-        role: "super-admin",
-        password: candidate.password,
-      });
-      logger.info(
-        { email: candidate.email },
-        "Seeded default super-admin user",
-      );
+      let userId: number;
+      if (existing) {
+        userId = existing.id;
+      } else {
+        const created = await createUser({
+          email: candidate.email,
+          name: candidate.name,
+          role: "super-admin",
+          password: candidate.password,
+        });
+        userId = created.id;
+        logger.info(
+          { email: candidate.email },
+          "Seeded default super-admin user",
+        );
+      }
+      if (defaultOrgId !== null) {
+        await ensureMembership(userId, defaultOrgId, "owner");
+      }
     } catch (err) {
       logger.warn({ err, email: candidate.email }, "Failed to seed admin user");
     }
+  }
+
+  // Catch any pre-existing users that were created before the
+  // organizations tables existed and place them in the default org.
+  try {
+    await backfillExistingUsersIntoDefaultOrg();
+  } catch (err) {
+    logger.warn({ err }, "Failed to backfill existing users into default org");
   }
 }
