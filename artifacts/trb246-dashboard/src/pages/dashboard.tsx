@@ -77,6 +77,9 @@ import { useUsers } from "../config/users-store";
 import { SitesManager } from "../components/sites-manager";
 import { UsersManager } from "../components/users-manager";
 import { AlertsPanel, AlertsBell } from "../components/alerts-panel";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 const CHART_COLORS = {
   amber: "#ff9900",
@@ -1170,6 +1173,115 @@ function FormulaeView({ blueprint, strings }: { blueprint: SiteBlueprint; string
   );
 }
 
+type ReportPayload = {
+  blueprint: SiteBlueprint;
+  strings: StringRuntime[];
+  latest: ParsedReading | null;
+  operationalStrings: number;
+  activeFaults: number;
+  activeWarnings: number;
+  lastReceivedDisplay: string;
+  latestPower: number;
+  latestSignal: number | string;
+};
+
+function buildReportRows(strings: StringRuntime[]) {
+  return strings.map((item) => ({
+    String: item.string.name,
+    Device: item.string.deviceId,
+    MPPT: item.string.mppt,
+    Status: item.statusLabel,
+    "Expected (W)": item.string.expectedPowerW,
+    "Live (W)": item.powerW === null ? "" : Number(item.powerW.toFixed(2)),
+    "Min Since Data": item.minutesSinceData ?? "",
+  }));
+}
+
+function reportFilename(blueprint: SiteBlueprint, ext: string) {
+  const slug = blueprint.siteName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  return `solarnexus-${slug}-report-${stamp}.${ext}`;
+}
+
+function exportReportPdf(p: ReportPayload) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const margin = 40;
+  let y = margin;
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("SolarNexus Operations Report", margin, y);
+  y += 22;
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${p.blueprint.siteName} • ${p.blueprint.capacityMw} MW`, margin, y);
+  y += 14;
+  doc.setTextColor(100);
+  doc.text(`Generated ${new Date().toLocaleString()}`, margin, y);
+  doc.setTextColor(0);
+  y += 22;
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "bold");
+  doc.text("Summary", margin, y);
+  y += 16;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const summary = [
+    `${p.operationalStrings} of ${p.strings.length} strings online; ${p.activeFaults} fault, ${p.activeWarnings} warning.`,
+    `Latest gateway: ${p.latest?.deviceId ?? "no device"} received ${p.lastReceivedDisplay}.`,
+    `Module temperature ${p.latest?.temperatureC?.toFixed(1) ?? "--"} °C, output ${p.latestPower.toFixed(1)} W, signal ${p.latestSignal}%.`,
+  ];
+  summary.forEach((line) => {
+    const wrapped = doc.splitTextToSize(line, 515);
+    doc.text(wrapped, margin, y);
+    y += wrapped.length * 12;
+  });
+  y += 10;
+
+  const rows = buildReportRows(p.strings);
+  autoTable(doc, {
+    startY: y,
+    head: [["String", "Device", "MPPT", "Status", "Expected (W)", "Live (W)", "Min Since Data"]],
+    body: rows.map((r) => [r.String, r.Device, r.MPPT, r.Status, r["Expected (W)"], r["Live (W)"], r["Min Since Data"]]),
+    styles: { fontSize: 9, cellPadding: 4 },
+    headStyles: { fillColor: [255, 153, 0], textColor: 255 },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: margin, right: margin },
+  });
+
+  doc.save(reportFilename(p.blueprint, "pdf"));
+}
+
+function exportReportExcel(p: ReportPayload) {
+  const wb = XLSX.utils.book_new();
+  const summary = [
+    ["SolarNexus Operations Report"],
+    ["Site", p.blueprint.siteName],
+    ["Capacity (MW)", p.blueprint.capacityMw],
+    ["Generated", new Date().toLocaleString()],
+    [],
+    ["Strings online", `${p.operationalStrings} / ${p.strings.length}`],
+    ["Active faults", p.activeFaults],
+    ["Active warnings", p.activeWarnings],
+    [],
+    ["Latest device", p.latest?.deviceId ?? ""],
+    ["Last received", p.lastReceivedDisplay],
+    ["Module temperature (°C)", p.latest?.temperatureC ?? ""],
+    ["Latest power (W)", Number(p.latestPower.toFixed(2))],
+    ["Latest signal (%)", p.latestSignal],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summary);
+  wsSummary["!cols"] = [{ wch: 28 }, { wch: 32 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+  const rows = buildReportRows(p.strings);
+  const wsStrings = XLSX.utils.json_to_sheet(rows);
+  wsStrings["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 8 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, wsStrings, "Strings");
+
+  XLSX.writeFile(wb, reportFilename(p.blueprint, "xlsx"));
+}
+
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const [isDark, setIsDark] = useState(false);
@@ -2231,6 +2343,22 @@ export default function Dashboard() {
 
             {activeView === "report" && (
             <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportReportPdf({ blueprint: siteBlueprint, strings: stringRuntime, latest, operationalStrings, activeFaults, activeWarnings, lastReceivedDisplay, latestPower, latestSignal })}
+                >
+                  <FileText className="mr-2 h-4 w-4" /> Export PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => exportReportExcel({ blueprint: siteBlueprint, strings: stringRuntime, latest, operationalStrings, activeFaults, activeWarnings, lastReceivedDisplay, latestPower, latestSignal })}
+                >
+                  <Download className="mr-2 h-4 w-4" /> Export Excel
+                </Button>
+              </div>
               <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
                 <Card>
                   <CardHeader>
