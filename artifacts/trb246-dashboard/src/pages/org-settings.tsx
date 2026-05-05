@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredUser } from "@/lib/auth";
+import { Switch } from "@/components/ui/switch";
 import {
   saasApi,
   type Member,
@@ -28,6 +29,7 @@ import {
   type CreatedApiKey,
   type AuditEvent,
   type Usage,
+  type SmtpSettings,
 } from "@/lib/saas-api";
 import {
   Loader2,
@@ -39,9 +41,18 @@ import {
   KeyRound,
   ScrollText,
   Gauge,
+  Send,
+  Server,
 } from "lucide-react";
 
-const TAB_KEYS = ["members", "invites", "api-keys", "audit", "usage"] as const;
+const TAB_KEYS = [
+  "members",
+  "invites",
+  "api-keys",
+  "audit",
+  "usage",
+  "smtp",
+] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const ROLE_OPTIONS = ["viewer", "operator", "admin", "owner"] as const;
@@ -59,6 +70,8 @@ export default function OrgSettingsPage() {
   const currentMembership = memberships[0];
   const slug = currentMembership?.orgSlug ?? "default";
   const role = currentMembership?.role ?? "viewer";
+  const isSuperAdmin =
+    (user as unknown as { role?: string })?.role === "super-admin";
 
   const tab = useMemo<TabKey>(() => {
     const seg = location.replace(/^\/settings\/?/, "").split("/")[0] ?? "";
@@ -90,7 +103,9 @@ export default function OrgSettingsPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => navigate(`/settings/${v}`)}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList
+          className={`grid w-full ${isSuperAdmin ? "grid-cols-6" : "grid-cols-5"}`}
+        >
           <TabsTrigger value="members">
             <Users className="mr-2 h-4 w-4" /> Members
           </TabsTrigger>
@@ -106,6 +121,11 @@ export default function OrgSettingsPage() {
           <TabsTrigger value="usage">
             <Gauge className="mr-2 h-4 w-4" /> Usage
           </TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="smtp">
+              <Server className="mr-2 h-4 w-4" /> SMTP
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="members" className="mt-4">
@@ -123,6 +143,11 @@ export default function OrgSettingsPage() {
         <TabsContent value="usage" className="mt-4">
           <UsagePanel slug={slug} toast={toast} />
         </TabsContent>
+        {isSuperAdmin && (
+          <TabsContent value="smtp" className="mt-4">
+            <SmtpPanel toast={toast} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -574,6 +599,246 @@ function AuditPanel({ slug, toast }: { slug: string; toast: ToastFn }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function SmtpPanel({ toast }: { toast: ToastFn }) {
+  const [settings, setSettings] = useState<SmtpSettings | null>(null);
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState(587);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [clearPassword, setClearPassword] = useState(false);
+  const [fromAddress, setFromAddress] = useState("");
+  const [secure, setSecure] = useState(false);
+  const [appBaseUrl, setAppBaseUrl] = useState("");
+  const [testTo, setTestTo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  function applyToForm(s: SmtpSettings) {
+    setSettings(s);
+    setHost(s.host ?? "");
+    setPort(s.port);
+    setUsername(s.username ?? "");
+    setPassword("");
+    setClearPassword(false);
+    setFromAddress(s.fromAddress ?? "");
+    setSecure(s.secure);
+    setAppBaseUrl(s.appBaseUrl ?? "");
+  }
+
+  useEffect(() => {
+    saasApi
+      .getSmtpSettings()
+      .then(applyToForm)
+      .catch((e) =>
+        toast({ title: "Failed to load SMTP settings", description: String(e) }),
+      );
+  }, [toast]);
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const passwordField =
+        clearPassword ? "" : password.length > 0 ? password : undefined;
+      const updated = await saasApi.saveSmtpSettings({
+        host: host.trim() || null,
+        port: Number(port) || 587,
+        username: username.trim() || null,
+        password: passwordField,
+        fromAddress: fromAddress.trim() || null,
+        secure,
+        appBaseUrl: appBaseUrl.trim() || null,
+      });
+      applyToForm(updated);
+      toast({ title: "SMTP settings saved" });
+    } catch (err) {
+      toast({ title: "Save failed", description: String(err) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onTest() {
+    if (!testTo.trim()) {
+      toast({ title: "Enter a recipient address first" });
+      return;
+    }
+    setTesting(true);
+    try {
+      await saasApi.testSmtpSettings(testTo.trim());
+      toast({ title: "Test email sent" });
+    } catch (err) {
+      toast({ title: "Test send failed", description: String(err) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  if (!settings) return <Loader2 className="h-4 w-4 animate-spin" />;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>SMTP server</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSave} className="space-y-4" data-testid="form-smtp">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="smtp-host">Host</Label>
+                <Input
+                  id="smtp-host"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="smtp.example.com"
+                  data-testid="input-smtp-host"
+                />
+              </div>
+              <div>
+                <Label htmlFor="smtp-port">Port</Label>
+                <Input
+                  id="smtp-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value) || 0)}
+                  data-testid="input-smtp-port"
+                />
+              </div>
+              <div>
+                <Label htmlFor="smtp-user">Username</Label>
+                <Input
+                  id="smtp-user"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="off"
+                  data-testid="input-smtp-user"
+                />
+              </div>
+              <div>
+                <Label htmlFor="smtp-pass">
+                  Password{" "}
+                  {settings.passwordSet && !clearPassword && (
+                    <span className="text-xs text-muted-foreground">
+                      (leave blank to keep)
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  id="smtp-pass"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                  disabled={clearPassword}
+                  data-testid="input-smtp-pass"
+                />
+                {settings.passwordSet && (
+                  <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={clearPassword}
+                      onChange={(e) => {
+                        setClearPassword(e.target.checked);
+                        if (e.target.checked) setPassword("");
+                      }}
+                    />
+                    Clear stored password
+                  </label>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="smtp-from">From address</Label>
+                <Input
+                  id="smtp-from"
+                  value={fromAddress}
+                  onChange={(e) => setFromAddress(e.target.value)}
+                  placeholder="SolarNexus <noreply@example.com>"
+                  data-testid="input-smtp-from"
+                />
+              </div>
+              <div>
+                <Label htmlFor="smtp-baseurl">Dashboard base URL</Label>
+                <Input
+                  id="smtp-baseurl"
+                  value={appBaseUrl}
+                  onChange={(e) => setAppBaseUrl(e.target.value)}
+                  placeholder="https://solarnexus.example.com"
+                  data-testid="input-smtp-baseurl"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Used in password reset and invitation links.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="smtp-secure"
+                checked={secure}
+                onCheckedChange={setSecure}
+                data-testid="switch-smtp-secure"
+              />
+              <Label htmlFor="smtp-secure" className="text-sm font-normal">
+                Use implicit TLS (port 465)
+              </Label>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                {settings.updatedAt
+                  ? `Last saved ${new Date(settings.updatedAt).toLocaleString()}`
+                  : "Not yet configured."}
+              </div>
+              <Button type="submit" disabled={saving} data-testid="button-smtp-save">
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save SMTP settings
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Send test email</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[240px]">
+              <Label htmlFor="smtp-test-to">Recipient</Label>
+              <Input
+                id="smtp-test-to"
+                type="email"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="you@example.com"
+                data-testid="input-smtp-test-to"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={onTest}
+              disabled={testing}
+              data-testid="button-smtp-test"
+            >
+              {testing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="mr-2 h-4 w-4" />
+              )}
+              Send test
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Uses the saved SMTP settings above. Save first, then test.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

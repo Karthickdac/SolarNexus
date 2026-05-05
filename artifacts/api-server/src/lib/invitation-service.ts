@@ -51,7 +51,7 @@ export async function createInvitation(input: {
   if (!row) {
     return { ok: false, status: 500, error: "Failed to create invitation." };
   }
-  const url = `${getAppBaseUrl()}/accept-invite?token=${encodeURIComponent(token)}`;
+  const url = `${await getAppBaseUrl()}/accept-invite?token=${encodeURIComponent(token)}`;
   const dispatched = await sendMail({
     to: email,
     subject: `You're invited to join ${input.orgName} on SolarNexus`,

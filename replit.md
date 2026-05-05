@@ -175,9 +175,20 @@ devices.
 
 ### SMTP configuration
 
-Set `SMTP_HOST`, `SMTP_PORT` (default `587`), `SMTP_USER`, `SMTP_PASS`,
-`SMTP_FROM`, `SMTP_SECURE` (`true` for implicit TLS), and `APP_BASE_URL`
-(public dashboard URL used in emailed links). When SMTP is **not**
+SMTP is configured from the dashboard: sign in as a super-admin, go to
+`/settings/smtp`, fill in host / port / username / password / from
+address / dashboard base URL / secure (implicit TLS) and save. The
+"Send test" card lets you verify against a real recipient before going
+live. Settings live in the singleton `smtp_settings` row; the password
+is never returned over the API (only `passwordSet: boolean` is exposed),
+and leaving the password field blank on update keeps the existing one.
+
+Endpoints (super-admin only): `GET /api/admin/smtp-settings`,
+`PUT /api/admin/smtp-settings`, `POST /api/admin/smtp-settings/test`.
+
+If the DB row is empty the mailer falls back to the legacy env vars
+`SMTP_HOST`, `SMTP_PORT` (default `587`), `SMTP_USER`, `SMTP_PASS`,
+`SMTP_FROM`, `SMTP_SECURE`, and `APP_BASE_URL`. When neither is
 configured the API logs the email body so dev environments can copy
 reset / invite links from the server log instead of receiving a real
 email.

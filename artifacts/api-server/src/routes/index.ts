@@ -7,6 +7,7 @@ import downloadsRouter from "./downloads";
 import passwordResetRouter from "./password-reset";
 import invitationsRouter from "./invitations";
 import orgsRouter from "./orgs";
+import adminSettingsRouter from "./admin-settings";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(downloadsRouter);
 router.use(passwordResetRouter);
 router.use(invitationsRouter);
 router.use(orgsRouter);
+router.use(adminSettingsRouter);
 
 export default router;

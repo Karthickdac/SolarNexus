@@ -119,4 +119,31 @@ export const saasApi = {
 
   getUsage: (slug: string) =>
     request<Usage>("GET", `/orgs/${slug}/usage`),
+
+  getSmtpSettings: () => request<SmtpSettings>("GET", `/admin/smtp-settings`),
+  saveSmtpSettings: (input: SmtpSettingsInput) =>
+    request<SmtpSettings>("PUT", `/admin/smtp-settings`, input),
+  testSmtpSettings: (to: string) =>
+    request<{ ok: true }>("POST", `/admin/smtp-settings/test`, { to }),
+};
+
+export type SmtpSettings = {
+  host: string | null;
+  port: number;
+  username: string | null;
+  fromAddress: string | null;
+  secure: boolean;
+  appBaseUrl: string | null;
+  passwordSet: boolean;
+  updatedAt: string | null;
+};
+
+export type SmtpSettingsInput = {
+  host: string | null;
+  port: number;
+  username: string | null;
+  password?: string | null;
+  fromAddress: string | null;
+  secure: boolean;
+  appBaseUrl: string | null;
 };

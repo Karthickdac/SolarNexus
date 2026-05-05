@@ -22,7 +22,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
   await db
     .insert(passwordResetsTable)
     .values({ tokenHash, userId: user.id, expiresAt });
-  const url = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+  const url = `${await getAppBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
   await sendMail({
     to: user.email,
     subject: "Reset your SolarNexus password",

@@ -23,3 +23,4 @@ export * from "./users";
 export * from "./organizations";
 export * from "./audit-log";
 export * from "./auth-tokens";
+export * from "./app-settings";
