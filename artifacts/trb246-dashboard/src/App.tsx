@@ -82,6 +82,8 @@ function Router() {
       <Route path="/" component={ProtectedDashboard} />
       <Route path="/overview" component={ProtectedDashboard} />
       <Route path="/simulation" component={ProtectedDashboard} />
+      <Route path="/single-line" component={ProtectedDashboard} />
+      <Route path="/formulae" component={ProtectedDashboard} />
       <Route path="/analytics" component={ProtectedDashboard} />
       <Route path="/report" component={ProtectedDashboard} />
       <Route path="/alerts" component={ProtectedDashboard} />
