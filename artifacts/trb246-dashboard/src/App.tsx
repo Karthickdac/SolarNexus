@@ -71,6 +71,14 @@ function Router() {
     <Switch>
       <Route path="/login" component={LoginRoute} />
       <Route path="/" component={ProtectedDashboard} />
+      <Route path="/overview" component={ProtectedDashboard} />
+      <Route path="/simulation" component={ProtectedDashboard} />
+      <Route path="/analytics" component={ProtectedDashboard} />
+      <Route path="/report" component={ProtectedDashboard} />
+      <Route path="/alerts" component={ProtectedDashboard} />
+      <Route path="/config" component={ProtectedDashboard} />
+      <Route path="/sites" component={ProtectedDashboard} />
+      <Route path="/users" component={ProtectedDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

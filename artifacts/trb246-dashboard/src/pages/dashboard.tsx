@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { CSVLink } from "react-csv";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -603,7 +604,11 @@ export default function Dashboard() {
   const [isDark, setIsDark] = useState(false);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [activeView, setActiveView] = useState("overview");
+  const [location, navigate] = useLocation();
+  const VALID_VIEWS = ["overview", "simulation", "analytics", "report", "alerts", "config", "sites", "users"] as const;
+  const pathSegment = location.replace(/^\/+/, "").split("/")[0] || "overview";
+  const activeView = (VALID_VIEWS as readonly string[]).includes(pathSegment) ? pathSegment : "overview";
+  const setActiveView = (view: string) => navigate(`/${view}`);
 
   const [deviceFilter, setDeviceFilter] = useState<string>("all");
   const [rangeFilter, setRangeFilter] = useState<"hour" | "day" | "week" | "all" | "custom">("all");
