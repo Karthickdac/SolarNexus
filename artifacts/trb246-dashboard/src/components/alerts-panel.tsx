@@ -269,10 +269,18 @@ export function AlertsPanel({ sites }: { sites?: AlertsPanelSite[] } = {}) {
 
   const coverage = useMemo(() => {
     const bySite = new Map<string, string[]>();
+    const lastSyncedBySite = new Map<string, number>();
     for (const a of assignments) {
       const list = bySite.get(a.siteId) ?? [];
       list.push(a.deviceId);
       bySite.set(a.siteId, list);
+      const ts = new Date(a.updatedAt).getTime();
+      if (!Number.isNaN(ts)) {
+        const prev = lastSyncedBySite.get(a.siteId);
+        if (prev === undefined || ts > prev) {
+          lastSyncedBySite.set(a.siteId, ts);
+        }
+      }
     }
     for (const list of bySite.values()) list.sort();
 
@@ -282,10 +290,12 @@ export function AlertsPanel({ sites }: { sites?: AlertsPanelSite[] } = {}) {
 
     const rows = Array.from(knownIds).map((id) => {
       const known = sites?.find((s) => s.id === id);
+      const lastSyncedAt = lastSyncedBySite.get(id);
       return {
         id,
         siteName: known?.siteName ?? id,
         deviceIds: bySite.get(id) ?? [],
+        lastSyncedAt: lastSyncedAt !== undefined ? new Date(lastSyncedAt) : null,
       };
     });
     rows.sort((a, b) => a.siteName.localeCompare(b.siteName));
@@ -606,6 +616,13 @@ export function AlertsPanel({ sites }: { sites?: AlertsPanelSite[] } = {}) {
                     <div className="text-sm font-semibold">{row.siteName}</div>
                     <div className="font-mono text-[11px] text-muted-foreground">
                       {row.id}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {row.lastSyncedAt
+                        ? `synced ${formatDistanceToNow(row.lastSyncedAt, {
+                            addSuffix: true,
+                          })}`
+                        : "never synced"}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-1 md:max-w-[70%] md:justify-end">
