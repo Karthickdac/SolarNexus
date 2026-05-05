@@ -797,43 +797,46 @@ function PlantSimulation({ blueprint, strings, loading, latest }: { blueprint: S
 type PlantKpis = {
   capacityMw: number;
   instDcKw: number;
-  instAcKw: number;
+  avgVoltageV: number | null;
+  totalCurrentA: number | null;
   onlinePct: number;
-  cufPct: number;
   moduleTempC: number | null;
-  ambientTempC: number | null;
-  todayIrrKwhM2: number | null;
-  todayGenKwh: number | null;
-  plantStartTime: string;
-  plantStopTime: string;
+  signalQualityPct: number | null;
+  lastUpdate: string;
   stringsTotal: number;
   stringsOnline: number;
 };
 
 function computePlantKpis(blueprint: SiteBlueprint, strings: StringRuntime[], latest: ParsedReading | null): PlantKpis {
   const capacityMw = blueprint.capacityMw;
-  const totalPowerW = strings.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
+  const reporting = strings.filter((item) => item.powerW !== null);
+  const totalPowerW = reporting.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
   const instDcKw = totalPowerW / 1000;
-  // Approximate AC power assuming 97% inverter efficiency
-  const instAcKw = instDcKw * 0.97;
   const stringsTotal = strings.length;
   const stringsOnline = strings.filter((item) => item.status === "online").length;
   const onlinePct = stringsTotal ? (stringsOnline / stringsTotal) * 100 : 0;
-  // CUF over the current snapshot: instAc / (capacity in kW)
-  const capacityKw = capacityMw * 1000;
-  const cufPct = capacityKw > 0 ? (instAcKw / capacityKw) * 100 : 0;
+  // Aggregate voltage / current from per-string readings only (no assumed efficiency).
+  const voltageReadings = strings
+    .map((item) => item.reading?.voltageV)
+    .filter((v): v is number => typeof v === "number");
+  const currentReadings = strings
+    .map((item) => item.reading?.flowLpm)
+    .filter((v): v is number => typeof v === "number");
+  const avgVoltageV = voltageReadings.length
+    ? voltageReadings.reduce((s, v) => s + v, 0) / voltageReadings.length
+    : null;
+  const totalCurrentA = currentReadings.length
+    ? currentReadings.reduce((s, v) => s + v, 0)
+    : null;
   return {
     capacityMw,
     instDcKw,
-    instAcKw,
+    avgVoltageV,
+    totalCurrentA,
     onlinePct,
-    cufPct,
     moduleTempC: latest?.temperatureC ?? null,
-    ambientTempC: null,
-    todayIrrKwhM2: null,
-    todayGenKwh: null,
-    plantStartTime: "06:00",
-    plantStopTime: "18:30",
+    signalQualityPct: latest?.signalQuality ?? null,
+    lastUpdate: latest?.timeLabel ?? "—",
     stringsTotal,
     stringsOnline,
   };
@@ -853,14 +856,14 @@ function PlantKpiRibbon({ kpis }: { kpis: PlantKpis }) {
   const fmtNum = (v: number | null, digits = 1, suffix = "") => v === null ? "—" : `${v.toFixed(digits)}${suffix}`;
   return (
     <div className="flex flex-wrap gap-2 rounded-xl border bg-gradient-to-br from-card to-muted/40 p-2">
-      {tile("Module Temp", fmtNum(kpis.moduleTempC, 1, " °C"), "Latest reading", CHART_COLORS.amber, Thermometer)}
-      {tile("Ambient Temp", fmtNum(kpis.ambientTempC, 1, " °C"), "Awaiting MET", CHART_COLORS.slate, Thermometer)}
-      {tile("Today IRR", fmtNum(kpis.todayIrrKwhM2, 2, " kWh/m²"), "Awaiting MET", CHART_COLORS.amber, Sun)}
-      {tile("Inst. DC PWR", `${kpis.instDcKw.toFixed(2)} kW`, "Sum of strings", CHART_COLORS.blue, Activity)}
-      {tile("Inst. AC PWR", `${kpis.instAcKw.toFixed(2)} kW`, "≈97% inverter", CHART_COLORS.cyan, Zap)}
-      {tile("Today Gen", fmtNum(kpis.todayGenKwh, 1, " kWh"), "Daily counter", CHART_COLORS.green, TrendingUp)}
+      {tile("Capacity", `${kpis.capacityMw} MW`, "Configured", CHART_COLORS.slate, Activity)}
+      {tile("Module Temp", fmtNum(kpis.moduleTempC, 1, " °C"), "Latest gateway reading", CHART_COLORS.amber, Thermometer)}
+      {tile("Inst. DC Power", `${kpis.instDcKw.toFixed(2)} kW`, `${kpis.stringsOnline}/${kpis.stringsTotal} strings reporting`, CHART_COLORS.blue, Activity)}
+      {tile("Avg Voltage", fmtNum(kpis.avgVoltageV, 2, " V"), "Mean of string readings", CHART_COLORS.purple, Zap)}
+      {tile("Total Current", fmtNum(kpis.totalCurrentA, 2, " A"), "Sum of string readings", CHART_COLORS.cyan, Activity)}
+      {tile("Signal Quality", fmtNum(kpis.signalQualityPct, 0, " %"), "Latest gateway", CHART_COLORS.green, Gauge)}
       {tile("Online", `${kpis.onlinePct.toFixed(0)}%`, `${kpis.stringsOnline}/${kpis.stringsTotal} strings`, kpis.onlinePct > 90 ? CHART_COLORS.green : kpis.onlinePct > 60 ? CHART_COLORS.amber : CHART_COLORS.red, Gauge)}
-      {tile("Plant Hours", `${kpis.plantStartTime} – ${kpis.plantStopTime}`, "Operating window", CHART_COLORS.purple, Activity)}
+      {tile("Last Update", kpis.lastUpdate, kpis.lastUpdate === "—" ? "No data yet" : "Latest reading time", CHART_COLORS.amber, TrendingUp)}
     </div>
   );
 }
@@ -898,22 +901,36 @@ function ScadaActionPanel() {
 }
 
 function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlueprint; strings: StringRuntime[]; loading: boolean }) {
-  // Per-inverter aggregated values
+  // Per-inverter aggregated values, derived only from live string readings
   const inverters = blueprint.inverters.map((inverter) => {
     const linked = strings.filter((item) => item.string.inverterId === inverter.id);
-    const acKw = (linked.reduce((sum, item) => sum + (item.powerW ?? 0), 0) / 1000) * 0.97;
+    const reportingPower = linked.filter((item) => item.powerW !== null);
+    const dcKw = reportingPower.length
+      ? reportingPower.reduce((sum, item) => sum + (item.powerW ?? 0), 0) / 1000
+      : null;
+    const voltages = linked.map((item) => item.reading?.voltageV).filter((v): v is number => typeof v === "number");
+    const currents = linked.map((item) => item.reading?.flowLpm).filter((v): v is number => typeof v === "number");
+    const kv = voltages.length ? (voltages.reduce((s, v) => s + v, 0) / voltages.length) / 1000 : null;
+    const amp = currents.length ? currents.reduce((s, v) => s + v, 0) : null;
     const status: StatusLevel = linked.some((item) => item.status === "fault")
       ? "fault"
       : linked.some((item) => item.status === "warning")
         ? "warning"
         : "online";
-    // KV is constant for the LV side after step-up; AMP from KW assuming 11kV three-phase
-    const kv = 11.18;
-    const amp = acKw > 0 ? (acKw * 1000) / (Math.sqrt(3) * kv * 1000) * 1000 : 0;
-    return { inverter, acKw, status, kv, amp };
+    return { inverter, dcKw, status, kv, amp };
   });
-  const totalAcKw = inverters.reduce((sum, item) => sum + item.acKw, 0);
-  const totalAmp = inverters.reduce((sum, item) => sum + item.amp, 0);
+  const reportingInverters = inverters.filter((i) => i.dcKw !== null);
+  const totalKw = reportingInverters.length
+    ? reportingInverters.reduce((sum, i) => sum + (i.dcKw ?? 0), 0)
+    : null;
+  const reportingAmps = inverters.filter((i) => i.amp !== null);
+  const totalAmp = reportingAmps.length
+    ? reportingAmps.reduce((sum, i) => sum + (i.amp ?? 0), 0)
+    : null;
+  const reportingKvs = inverters.filter((i) => i.kv !== null);
+  const trunkKv = reportingKvs.length
+    ? reportingKvs.reduce((sum, i) => sum + (i.kv ?? 0), 0) / reportingKvs.length
+    : null;
   const trunkStatus: StatusLevel = inverters.some((item) => item.status === "fault")
     ? "fault"
     : inverters.some((item) => item.status === "warning")
@@ -936,8 +953,8 @@ function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlu
           </p>
         </div>
         <div className="flex flex-col items-end leading-tight">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Plant export</span>
-          <span className="text-base font-bold text-emerald-600">{totalAcKw.toFixed(2)} kW</span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Plant DC Power</span>
+          <span className="text-base font-bold text-emerald-600">{totalKw === null ? "—" : `${totalKw.toFixed(2)} kW`}</span>
         </div>
       </CardHeader>
       <CardContent>
@@ -952,14 +969,14 @@ function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlu
 
             {/* OD breaker meter card */}
             <div className="absolute left-1/2 top-10 flex -translate-x-1/2 flex-col items-center gap-1">
-              <MeterCard label="OD_BRE" kw={totalAcKw} amp={totalAmp} kv={11.17} status={trunkStatus} />
+              <MeterCard label="OD_BRE" kw={totalKw} amp={totalAmp} kv={trunkKv} status={trunkStatus} />
             </div>
 
             {/* Top bus bar label */}
             <div className="absolute left-3 top-[26%] text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">11 kV BUS BAR (Outgoing)</div>
             {/* OG breaker meter card (incoming) */}
             <div className="absolute left-1/2 top-[33%] flex -translate-x-1/2 flex-col items-center gap-1">
-              <MeterCard label="OG_BRE" kw={totalAcKw} amp={totalAmp} kv={11.19} status={trunkStatus} />
+              <MeterCard label="OG_BRE" kw={totalKw} amp={totalAmp} kv={trunkKv} status={trunkStatus} />
             </div>
 
             {/* Lower bus bar label */}
@@ -967,22 +984,22 @@ function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlu
 
             {/* Breakers + inverters row at bottom */}
             <div className="absolute inset-x-4 bottom-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${inverters.length}, minmax(0, 1fr)) minmax(0, 0.8fr)` }}>
-              {inverters.map(({ inverter, acKw, status, kv, amp }) => (
+              {inverters.map(({ inverter, dcKw, status, kv, amp }) => (
                 <div key={inverter.id} className="flex flex-col items-center gap-2">
-                  <MeterCard label={`HT_BRE${inverter.name.replace(/\D+/g, "")}`} kw={acKw} amp={amp} kv={kv} status={status} dense />
+                  <MeterCard label={`HT_BRE${inverter.name.replace(/\D+/g, "")}`} kw={dcKw} amp={amp} kv={kv} status={status} dense />
                   <div className={`flex h-20 w-full flex-col items-center justify-center rounded-lg border-2 bg-slate-900 text-[10px] font-bold ${status === "online" ? "border-emerald-400 text-emerald-300" : status === "warning" ? "border-amber-400 text-amber-300" : "border-red-500 text-red-300"}`}>
                     <Cpu className="mb-1 h-5 w-5" />
                     <span>{inverter.name.replace("Inverter ", "INV ")}</span>
-                    <span className="mt-0.5 text-[9px] opacity-80">{acKw.toFixed(2)} kW</span>
+                    <span className="mt-0.5 text-[9px] opacity-80">{dcKw === null ? "— kW" : `${dcKw.toFixed(2)} kW`}</span>
                   </div>
                 </div>
               ))}
               <div className="flex flex-col items-center gap-2">
-                <MeterCard label="AUX_BRE" kw={0.5} amp={0.7} kv={236.4} status="online" dense />
+                <MeterCard label="AUX_BRE" kw={null} amp={null} kv={null} status="online" dense />
                 <div className="flex h-20 w-full flex-col items-center justify-center rounded-lg border-2 border-sky-400 bg-slate-900 text-[10px] font-bold text-sky-300">
                   <Building2 className="mb-1 h-5 w-5" />
                   <span>CONTROL ROOM</span>
-                  <span className="mt-0.5 text-[9px] opacity-80">Aux 230 V</span>
+                  <span className="mt-0.5 text-[9px] opacity-80">No aux meter</span>
                 </div>
               </div>
             </div>
@@ -1033,17 +1050,18 @@ function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlu
   );
 }
 
-function MeterCard({ label, kw, amp, kv, status, dense }: { label: string; kw: number; amp: number; kv: number; status: StatusLevel; dense?: boolean }) {
+function MeterCard({ label, kw, amp, kv, status, dense }: { label: string; kw: number | null; amp: number | null; kv: number | null; status: StatusLevel; dense?: boolean }) {
   const color = status === "online" ? "#34d399" : status === "warning" ? "#fbbf24" : "#f87171";
+  const fmt = (v: number | null) => v === null ? "—" : v.toFixed(2);
   return (
     <div className={`flex ${dense ? "min-w-[110px]" : "min-w-[170px]"} flex-col rounded-md border border-slate-700 bg-slate-900/95 ${dense ? "px-2 py-1" : "px-3 py-1.5"} font-mono text-[10px] shadow-md`}>
       <div className="mb-1 flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300">{label}</span>
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
       </div>
-      <Row k="KW" v={kw.toFixed(2)} color={color} />
-      <Row k="AMP" v={amp.toFixed(2)} color={color} />
-      <Row k="KV" v={kv.toFixed(2)} color={color} />
+      <Row k="KW" v={fmt(kw)} color={color} />
+      <Row k="AMP" v={fmt(amp)} color={color} />
+      <Row k="KV" v={fmt(kv)} color={color} />
     </div>
   );
 }
@@ -1058,20 +1076,31 @@ function Row({ k, v, color }: { k: string; v: string; color: string }) {
 }
 
 function FormulaeView({ blueprint, strings }: { blueprint: SiteBlueprint; strings: StringRuntime[] }) {
-  const totalPowerW = strings.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
-  const instDcKw = totalPowerW / 1000;
-  const instAcKw = instDcKw * 0.97;
+  const reportingPower = strings.filter((item) => item.powerW !== null);
+  const totalPowerW = reportingPower.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
+  const instDcKw = reportingPower.length ? totalPowerW / 1000 : null;
   const capacityKw = blueprint.capacityMw * 1000;
-  // Use a representative average IRR if available; placeholder otherwise so formula renders
-  const avgIrr = 4.24;
-  const operatingHours = 24;
-  const poaKwhM2 = (avgIrr * operatingHours) / 1000;
-  const energyGenKwh = instAcKw * 1; // last hour proxy; real impl needs accumulator
-  const pr = poaKwhM2 > 0 && capacityKw > 0 ? (energyGenKwh * 100) / (poaKwhM2 * capacityKw) : 0;
-  const cuf = capacityKw > 0 ? (instAcKw * 100) / capacityKw : 0;
-  const co2Tons = energyGenKwh * 0.00067;
-  const dieselTons = energyGenKwh * 0.099;
-  const trees = energyGenKwh * 0.00067;
+
+  // Voltage / current measured per string (no assumed conversion factors)
+  const voltages = strings.map((s) => s.reading?.voltageV).filter((v): v is number => typeof v === "number");
+  const currents = strings.map((s) => s.reading?.flowLpm).filter((v): v is number => typeof v === "number");
+  const avgVoltage = voltages.length ? voltages.reduce((s, v) => s + v, 0) / voltages.length : null;
+  const totalCurrent = currents.length ? currents.reduce((s, v) => s + v, 0) : null;
+  const smbPowerKw = avgVoltage !== null && totalCurrent !== null
+    ? (avgVoltage * totalCurrent) / 1000
+    : null;
+
+  // CUF over the current snapshot uses measured DC kW vs installed capacity
+  const cuf = instDcKw !== null && capacityKw > 0 ? (instDcKw * 100) / capacityKw : null;
+
+  // Plant equivalents (kg/MWh factors from IPCC + IEA averages)
+  // Without an energy-accumulator we cannot report today's energy yet.
+  const todayEnergyKwh: number | null = null;
+  const co2Tons = todayEnergyKwh !== null ? todayEnergyKwh * 0.00067 : null;
+  const dieselTons = todayEnergyKwh !== null ? todayEnergyKwh * 0.000268 : null;
+  const trees = todayEnergyKwh !== null ? todayEnergyKwh * 0.0166 : null;
+
+  const fmt = (v: number | null, digits = 2, suffix = "") => v === null ? "—" : `${v.toFixed(digits)}${suffix}`;
 
   const F = ({ title, expression, result, unit, note }: { title: string; expression: React.ReactNode; result: string; unit?: string; note?: string }) => (
     <Card>
@@ -1105,66 +1134,73 @@ function FormulaeView({ blueprint, strings }: { blueprint: SiteBlueprint; string
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /> Formulae & Plant Equivalents</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Live values derived from {blueprint.siteName} ({blueprint.capacityMw} MW). Energy figures are computed from the latest snapshot — replace with daily accumulators once available.
+            Values derived strictly from the latest live snapshot of {blueprint.siteName} ({blueprint.capacityMw} MW). Metrics whose source is not yet wired display as "—".
           </p>
         </CardHeader>
       </Card>
       <div className="grid gap-4 md:grid-cols-2">
         <F
           title="Solar Irradiation (POA)"
-          expression={<span><Frac num={<>(Avg Irradiation × Operating Hours)</>} den={<>1000</>} /> = <Frac num={<>{(avgIrr * operatingHours).toFixed(2)}</>} den={<>1000</>} /></span>}
-          result={poaKwhM2.toFixed(2)}
+          expression={<span><Frac num={<>(Avg Irradiation × Operating Hours)</>} den={<>1000</>} /></span>}
+          result="—"
           unit="kWh/m²"
-          note="Awaiting MET station; using representative irradiation."
+          note="Requires MET station feed (irradiance + operating hours)."
         />
         <F
           title="Performance Ratio (PR)"
-          expression={<span><Frac num={<>Energy Generated (kWh) × 100</>} den={<>Nominal Energy Output (kWh)</>} /> = <Frac num={<>{(energyGenKwh * 100).toFixed(0)}</>} den={<>{(poaKwhM2 * capacityKw).toFixed(0)}</>} /></span>}
-          result={`${pr.toFixed(2)} %`}
+          expression={<span><Frac num={<>Energy Generated (kWh) × 100</>} den={<>Nominal Energy Output (kWh)</>} /></span>}
+          result="—"
+          unit="%"
+          note="Requires daily energy accumulator and MET-derived nominal."
         />
         <F
-          title="Capacity Utilisation Factor (CUF)"
-          expression={<span><Frac num={<>Total Power Generation × 100</>} den={<>Installed Capacity × 24</>} /> = <Frac num={<>{(instAcKw * 100).toFixed(2)}</>} den={<>{(capacityKw * 24).toFixed(0)}</>} /></span>}
-          result={`${cuf.toFixed(3)} %`}
+          title="Capacity Utilisation Factor (CUF) — snapshot"
+          expression={<span><Frac num={<>Inst. DC Power × 100</>} den={<>Installed Capacity</>} /> = <Frac num={<>{instDcKw === null ? "—" : (instDcKw * 100).toFixed(2)}</>} den={<>{capacityKw.toFixed(0)}</>} /></span>}
+          result={fmt(cuf, 3, " %")}
+          note="Instantaneous CUF; daily CUF needs an energy accumulator."
         />
         <F
           title="Line Loss"
           expression={<span>LL = 100 − <Frac num={<>Total Energy Exported</>} den={<>Total Energy Generated</>} /> × 100</span>}
           result="—"
           unit="%"
-          note="Requires both feed-out meter and inverter accumulators."
+          note="Requires feed-out meter + inverter accumulators."
         />
         <F
           title="Power in SMB"
-          expression={<>P = Voltage × Total Current  <span className="text-muted-foreground">(kW)</span></>}
-          result={`${instDcKw.toFixed(2)} kW`}
-          note="DC side; sum of all string MPPT inputs."
+          expression={<>P = Voltage × Total Current = {fmt(avgVoltage, 2)} × {fmt(totalCurrent, 2)}</>}
+          result={fmt(smbPowerKw, 2, " kW")}
+          note="Computed from per-string voltage and current readings only."
         />
         <F
           title="Transformer Loss / Efficiency"
-          expression={<>η = <Frac num={<>Output</>} den={<>Input</>} /> × 100      Loss = Output − Input</>}
-          result={`${(97).toFixed(1)} %`}
-          note="Assumed 97% step-up efficiency until live transformer telemetry is wired."
+          expression={<>η = <Frac num={<>Output</>} den={<>Input</>} /> × 100      Loss = Input − Output</>}
+          result="—"
+          unit="%"
+          note="Requires HV-side and LV-side transformer meters."
         />
       </div>
       <Card>
-        <CardHeader><CardTitle className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Plant Equivalents</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Plant Equivalents</CardTitle>
+          <p className="text-[11px] text-muted-foreground">Computed from today's accumulated energy generation; awaiting daily energy meter.</p>
+        </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="rounded-lg border bg-emerald-500/5 p-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">CO₂ Reduction</div>
-              <div className="mt-1 text-2xl font-bold text-emerald-600">{co2Tons.toFixed(4)}</div>
-              <div className="text-[11px] text-muted-foreground">tons of CO₂ • 1 kWh ≈ 0.00067 t</div>
+              <div className="mt-1 text-2xl font-bold text-emerald-600">{fmt(co2Tons, 4)}</div>
+              <div className="text-[11px] text-muted-foreground">tons of CO₂ • 0.67 kg/kWh (IEA grid avg)</div>
             </div>
             <div className="rounded-lg border bg-amber-500/5 p-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Diesel Equivalent</div>
-              <div className="mt-1 text-2xl font-bold text-amber-600">{dieselTons.toFixed(3)}</div>
-              <div className="text-[11px] text-muted-foreground">tons of diesel • 1 kWh ≈ 0.099 t</div>
+              <div className="mt-1 text-2xl font-bold text-amber-600">{fmt(dieselTons, 4)}</div>
+              <div className="text-[11px] text-muted-foreground">tons of diesel • 0.268 kg/kWh @ 40% gen eff</div>
             </div>
             <div className="rounded-lg border bg-green-500/5 p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Trees Planted</div>
-              <div className="mt-1 text-2xl font-bold text-green-600">{trees.toFixed(4)}</div>
-              <div className="text-[11px] text-muted-foreground">trees • 1 kWh ≈ 0.00067</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Trees Equivalent</div>
+              <div className="mt-1 text-2xl font-bold text-green-600">{fmt(trees, 2)}</div>
+              <div className="text-[11px] text-muted-foreground">trees · year • 16.6 g CO₂ / tree-year</div>
             </div>
           </div>
         </CardContent>
