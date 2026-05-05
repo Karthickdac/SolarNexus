@@ -18,22 +18,30 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   Bell,
   Building2,
+  Calculator,
   CheckCircle2,
   Cpu,
   Download,
   FileText,
+  Gauge,
   LayoutDashboard,
+  Lock,
   LogOut,
   Moon,
   Network,
+  Power,
   Printer,
   Settings,
   Sun,
+  Thermometer,
+  TrendingUp,
   Users as UsersIcon,
+  Workflow,
   Zap,
 } from "lucide-react";
 import { clearSession, getStoredUser } from "@/lib/auth";
@@ -450,7 +458,8 @@ function NoDecodedValuesState() {
   );
 }
 
-function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBlueprint; strings: StringRuntime[]; loading: boolean }) {
+function PlantSimulation({ blueprint, strings, loading, latest }: { blueprint: SiteBlueprint; strings: StringRuntime[]; loading: boolean; latest?: ParsedReading | null }) {
+  const kpis = computePlantKpis(blueprint, strings, latest ?? null);
   const siteBlueprint = blueprint;
   const online = strings.filter((item) => item.status === "online").length;
   const warning = strings.filter((item) => item.status === "warning").length;
@@ -507,8 +516,11 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
         {loading ? (
           <Skeleton className="h-[520px] w-full rounded-xl" />
         ) : (
+          <div className="space-y-4">
+          <PlantKpiRibbon kpis={kpis} />
           <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
             <div className="relative min-h-[560px] overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_top_left,rgba(255,153,0,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.10),transparent_35%),linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)))]">
+              <ScadaActionPanel />
               {/* Engineering grid backdrop */}
               <div className="pointer-events-none absolute inset-0 opacity-[0.22]" style={{ backgroundImage: "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
               <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={{ backgroundImage: "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "140px 140px" }} />
@@ -772,9 +784,389 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
               </Card>
             </div>
           </div>
+          </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+type PlantKpis = {
+  capacityMw: number;
+  instDcKw: number;
+  instAcKw: number;
+  onlinePct: number;
+  cufPct: number;
+  moduleTempC: number | null;
+  ambientTempC: number | null;
+  todayIrrKwhM2: number | null;
+  todayGenKwh: number | null;
+  plantStartTime: string;
+  plantStopTime: string;
+  stringsTotal: number;
+  stringsOnline: number;
+};
+
+function computePlantKpis(blueprint: SiteBlueprint, strings: StringRuntime[], latest: ParsedReading | null): PlantKpis {
+  const capacityMw = blueprint.capacityMw;
+  const totalPowerW = strings.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
+  const instDcKw = totalPowerW / 1000;
+  // Approximate AC power assuming 97% inverter efficiency
+  const instAcKw = instDcKw * 0.97;
+  const stringsTotal = strings.length;
+  const stringsOnline = strings.filter((item) => item.status === "online").length;
+  const onlinePct = stringsTotal ? (stringsOnline / stringsTotal) * 100 : 0;
+  // CUF over the current snapshot: instAc / (capacity in kW)
+  const capacityKw = capacityMw * 1000;
+  const cufPct = capacityKw > 0 ? (instAcKw / capacityKw) * 100 : 0;
+  return {
+    capacityMw,
+    instDcKw,
+    instAcKw,
+    onlinePct,
+    cufPct,
+    moduleTempC: latest?.temperatureC ?? null,
+    ambientTempC: null,
+    todayIrrKwhM2: null,
+    todayGenKwh: null,
+    plantStartTime: "06:00",
+    plantStopTime: "18:30",
+    stringsTotal,
+    stringsOnline,
+  };
+}
+
+function PlantKpiRibbon({ kpis }: { kpis: PlantKpis }) {
+  const tile = (label: string, value: string, sub?: string, color?: string, Icon?: typeof Sun) => (
+    <div className="flex min-w-[120px] flex-1 flex-col gap-0.5 rounded-md border bg-card/80 px-3 py-2 backdrop-blur-sm">
+      <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {Icon ? <Icon className="h-3 w-3" /> : null}
+        <span>{label}</span>
+      </div>
+      <div className="text-base font-bold leading-tight" style={{ color: color ?? "hsl(var(--foreground))" }}>{value}</div>
+      {sub ? <div className="text-[10px] text-muted-foreground">{sub}</div> : null}
+    </div>
+  );
+  const fmtNum = (v: number | null, digits = 1, suffix = "") => v === null ? "—" : `${v.toFixed(digits)}${suffix}`;
+  return (
+    <div className="flex flex-wrap gap-2 rounded-xl border bg-gradient-to-br from-card to-muted/40 p-2">
+      {tile("Module Temp", fmtNum(kpis.moduleTempC, 1, " °C"), "Latest reading", CHART_COLORS.amber, Thermometer)}
+      {tile("Ambient Temp", fmtNum(kpis.ambientTempC, 1, " °C"), "Awaiting MET", CHART_COLORS.slate, Thermometer)}
+      {tile("Today IRR", fmtNum(kpis.todayIrrKwhM2, 2, " kWh/m²"), "Awaiting MET", CHART_COLORS.amber, Sun)}
+      {tile("Inst. DC PWR", `${kpis.instDcKw.toFixed(2)} kW`, "Sum of strings", CHART_COLORS.blue, Activity)}
+      {tile("Inst. AC PWR", `${kpis.instAcKw.toFixed(2)} kW`, "≈97% inverter", CHART_COLORS.cyan, Zap)}
+      {tile("Today Gen", fmtNum(kpis.todayGenKwh, 1, " kWh"), "Daily counter", CHART_COLORS.green, TrendingUp)}
+      {tile("Online", `${kpis.onlinePct.toFixed(0)}%`, `${kpis.stringsOnline}/${kpis.stringsTotal} strings`, kpis.onlinePct > 90 ? CHART_COLORS.green : kpis.onlinePct > 60 ? CHART_COLORS.amber : CHART_COLORS.red, Gauge)}
+      {tile("Plant Hours", `${kpis.plantStartTime} – ${kpis.plantStopTime}`, "Operating window", CHART_COLORS.purple, Activity)}
+    </div>
+  );
+}
+
+function ScadaActionPanel() {
+  const [active, setActive] = useState<string>("");
+  const items: { id: string; label: string; Icon: typeof Sun }[] = [
+    { id: "meter", label: "Meter Parameters", Icon: Gauge },
+    { id: "breaker", label: "Breaker Status", Icon: Activity },
+    { id: "menu", label: "Menu", Icon: Settings },
+    { id: "shutdown", label: "Shut Down", Icon: Power },
+  ];
+  return (
+    <div className="absolute right-3 top-3 flex flex-col gap-1.5">
+      {items.map(({ id, label, Icon }) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => setActive(active === id ? "" : id)}
+          className={`flex items-center gap-2 rounded-md border bg-background/85 px-3 py-1.5 text-[11px] font-semibold shadow-sm backdrop-blur-sm transition-colors hover:bg-background ${active === id ? "border-primary text-primary" : "text-foreground"}`}
+          title={label}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          <span>{label}</span>
+          <Lock className="h-3 w-3 opacity-40" />
+        </button>
+      ))}
+      {active ? (
+        <div className="mt-1 rounded-md border bg-background/95 px-3 py-2 text-[10px] text-muted-foreground shadow-sm backdrop-blur-sm">
+          <strong className="text-foreground">{items.find((i) => i.id === active)?.label}:</strong> view-only in this build.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SingleLineDiagram({ blueprint, strings, loading }: { blueprint: SiteBlueprint; strings: StringRuntime[]; loading: boolean }) {
+  // Per-inverter aggregated values
+  const inverters = blueprint.inverters.map((inverter) => {
+    const linked = strings.filter((item) => item.string.inverterId === inverter.id);
+    const acKw = (linked.reduce((sum, item) => sum + (item.powerW ?? 0), 0) / 1000) * 0.97;
+    const status: StatusLevel = linked.some((item) => item.status === "fault")
+      ? "fault"
+      : linked.some((item) => item.status === "warning")
+        ? "warning"
+        : "online";
+    // KV is constant for the LV side after step-up; AMP from KW assuming 11kV three-phase
+    const kv = 11.18;
+    const amp = acKw > 0 ? (acKw * 1000) / (Math.sqrt(3) * kv * 1000) * 1000 : 0;
+    return { inverter, acKw, status, kv, amp };
+  });
+  const totalAcKw = inverters.reduce((sum, item) => sum + item.acKw, 0);
+  const totalAmp = inverters.reduce((sum, item) => sum + item.amp, 0);
+  const trunkStatus: StatusLevel = inverters.some((item) => item.status === "fault")
+    ? "fault"
+    : inverters.some((item) => item.status === "warning")
+      ? "warning"
+      : "online";
+
+  const breakerCount = Math.max(inverters.length, 1);
+  const breakerColumnWidth = 100 / (breakerCount + 1); // leave margin
+  const breakerXs = inverters.map((_, i) => (i + 1) * breakerColumnWidth);
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Workflow className="h-5 w-5 text-primary" /> 11 kV Single-Line Diagram
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {blueprint.siteName} • Grid export, bus bars, breakers and inverter feeders
+          </p>
+        </div>
+        <div className="flex flex-col items-end leading-tight">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Plant export</span>
+          <span className="text-base font-bold text-emerald-600">{totalAcKw.toFixed(2)} kW</span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-[520px] w-full rounded-xl" />
+        ) : (
+          <div className="relative min-h-[560px] overflow-hidden rounded-2xl border bg-slate-950 p-4 text-slate-100">
+            {/* Grid header label */}
+            <div className="absolute left-1/2 top-3 -translate-x-1/2 text-center">
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-amber-300">GRID</div>
+            </div>
+
+            {/* OD breaker meter card */}
+            <div className="absolute left-1/2 top-10 flex -translate-x-1/2 flex-col items-center gap-1">
+              <MeterCard label="OD_BRE" kw={totalAcKw} amp={totalAmp} kv={11.17} status={trunkStatus} />
+            </div>
+
+            {/* Top bus bar label */}
+            <div className="absolute left-3 top-[26%] text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">11 kV BUS BAR (Outgoing)</div>
+            {/* OG breaker meter card (incoming) */}
+            <div className="absolute left-1/2 top-[33%] flex -translate-x-1/2 flex-col items-center gap-1">
+              <MeterCard label="OG_BRE" kw={totalAcKw} amp={totalAmp} kv={11.19} status={trunkStatus} />
+            </div>
+
+            {/* Lower bus bar label */}
+            <div className="absolute left-3 top-[55%] text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">11 kV BUS BAR (Incoming)</div>
+
+            {/* Breakers + inverters row at bottom */}
+            <div className="absolute inset-x-4 bottom-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${inverters.length}, minmax(0, 1fr)) minmax(0, 0.8fr)` }}>
+              {inverters.map(({ inverter, acKw, status, kv, amp }) => (
+                <div key={inverter.id} className="flex flex-col items-center gap-2">
+                  <MeterCard label={`HT_BRE${inverter.name.replace(/\D+/g, "")}`} kw={acKw} amp={amp} kv={kv} status={status} dense />
+                  <div className={`flex h-20 w-full flex-col items-center justify-center rounded-lg border-2 bg-slate-900 text-[10px] font-bold ${status === "online" ? "border-emerald-400 text-emerald-300" : status === "warning" ? "border-amber-400 text-amber-300" : "border-red-500 text-red-300"}`}>
+                    <Cpu className="mb-1 h-5 w-5" />
+                    <span>{inverter.name.replace("Inverter ", "INV ")}</span>
+                    <span className="mt-0.5 text-[9px] opacity-80">{acKw.toFixed(2)} kW</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex flex-col items-center gap-2">
+                <MeterCard label="AUX_BRE" kw={0.5} amp={0.7} kv={236.4} status="online" dense />
+                <div className="flex h-20 w-full flex-col items-center justify-center rounded-lg border-2 border-sky-400 bg-slate-900 text-[10px] font-bold text-sky-300">
+                  <Building2 className="mb-1 h-5 w-5" />
+                  <span>CONTROL ROOM</span>
+                  <span className="mt-0.5 text-[9px] opacity-80">Aux 230 V</span>
+                </div>
+              </div>
+            </div>
+
+            {/* SVG bus bars + drop lines */}
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+              {/* Grid → OD vertical */}
+              <line x1="50" y1="6" x2="50" y2="11" stroke="#fde047" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+              <polygon points="50,5 49,7 51,7" fill="#fde047" />
+              {/* OD → top bus bar */}
+              <line x1="50" y1="20" x2="50" y2="28" stroke="#fde047" strokeWidth="0.4" strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke">
+                <animate attributeName="stroke-dashoffset" from="6" to="0" dur="1.4s" repeatCount="indefinite" />
+              </line>
+              {/* Top bus bar (horizontal) */}
+              <line x1="4" y1="28" x2="96" y2="28" stroke="#fde047" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+              {/* Top bus → OG */}
+              <line x1="50" y1="28" x2="50" y2="33" stroke="#fde047" strokeWidth="0.4" strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke">
+                <animate attributeName="stroke-dashoffset" from="6" to="0" dur="1.4s" repeatCount="indefinite" />
+              </line>
+              {/* OG → lower bus */}
+              <line x1="50" y1="42" x2="50" y2="56" stroke="#fde047" strokeWidth="0.4" strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke">
+                <animate attributeName="stroke-dashoffset" from="6" to="0" dur="1.4s" repeatCount="indefinite" />
+              </line>
+              {/* Lower bus bar */}
+              <line x1="4" y1="56" x2="96" y2="56" stroke="#fde047" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+              {/* Drop to each breaker */}
+              {breakerXs.map((xPct, idx) => {
+                const status = inverters[idx]?.status ?? "online";
+                const color = status === "online" ? "#34d399" : status === "warning" ? "#fbbf24" : "#f87171";
+                return (
+                  <g key={`drop-${idx}`}>
+                    <line x1={xPct} y1="56" x2={xPct} y2="68" stroke={color} strokeWidth="0.4" strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke">
+                      {status !== "fault" && <animate attributeName="stroke-dashoffset" from="6" to="0" dur="1.2s" repeatCount="indefinite" />}
+                    </line>
+                    <rect x={xPct - 0.6} y="55.4" width="1.2" height="1.2" fill={color} />
+                  </g>
+                );
+              })}
+              {/* Aux drop */}
+              <line x1={(inverters.length + 0.6) * breakerColumnWidth} y1="56" x2={(inverters.length + 0.6) * breakerColumnWidth} y2="68" stroke="#38bdf8" strokeWidth="0.4" strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke">
+                <animate attributeName="stroke-dashoffset" from="6" to="0" dur="1.2s" repeatCount="indefinite" />
+              </line>
+            </svg>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeterCard({ label, kw, amp, kv, status, dense }: { label: string; kw: number; amp: number; kv: number; status: StatusLevel; dense?: boolean }) {
+  const color = status === "online" ? "#34d399" : status === "warning" ? "#fbbf24" : "#f87171";
+  return (
+    <div className={`flex ${dense ? "min-w-[110px]" : "min-w-[170px]"} flex-col rounded-md border border-slate-700 bg-slate-900/95 ${dense ? "px-2 py-1" : "px-3 py-1.5"} font-mono text-[10px] shadow-md`}>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300">{label}</span>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+      </div>
+      <Row k="KW" v={kw.toFixed(2)} color={color} />
+      <Row k="AMP" v={amp.toFixed(2)} color={color} />
+      <Row k="KV" v={kv.toFixed(2)} color={color} />
+    </div>
+  );
+}
+
+function Row({ k, v, color }: { k: string; v: string; color: string }) {
+  return (
+    <div className="grid grid-cols-[34px_1fr] items-center gap-2 border-t border-slate-800 px-1 py-0.5 first:border-t-0">
+      <span className="text-amber-200/90">{k}</span>
+      <span className="text-right font-bold tabular-nums" style={{ color }}>{v}</span>
+    </div>
+  );
+}
+
+function FormulaeView({ blueprint, strings }: { blueprint: SiteBlueprint; strings: StringRuntime[] }) {
+  const totalPowerW = strings.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
+  const instDcKw = totalPowerW / 1000;
+  const instAcKw = instDcKw * 0.97;
+  const capacityKw = blueprint.capacityMw * 1000;
+  // Use a representative average IRR if available; placeholder otherwise so formula renders
+  const avgIrr = 4.24;
+  const operatingHours = 24;
+  const poaKwhM2 = (avgIrr * operatingHours) / 1000;
+  const energyGenKwh = instAcKw * 1; // last hour proxy; real impl needs accumulator
+  const pr = poaKwhM2 > 0 && capacityKw > 0 ? (energyGenKwh * 100) / (poaKwhM2 * capacityKw) : 0;
+  const cuf = capacityKw > 0 ? (instAcKw * 100) / capacityKw : 0;
+  const co2Tons = energyGenKwh * 0.00067;
+  const dieselTons = energyGenKwh * 0.099;
+  const trees = energyGenKwh * 0.00067;
+
+  const F = ({ title, expression, result, unit, note }: { title: string; expression: React.ReactNode; result: string; unit?: string; note?: string }) => (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm uppercase tracking-[0.16em] text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-lg border bg-muted/40 p-3 font-mono text-[12px] leading-relaxed text-foreground">
+          {expression}
+        </div>
+        <div className="mt-3 flex items-baseline gap-2">
+          <span className="text-2xl font-bold text-emerald-600">{result}</span>
+          {unit ? <span className="text-sm text-muted-foreground">{unit}</span> : null}
+        </div>
+        {note ? <p className="mt-1 text-[11px] text-muted-foreground">{note}</p> : null}
+      </CardContent>
+    </Card>
+  );
+
+  const Frac = ({ num, den }: { num: React.ReactNode; den: React.ReactNode }) => (
+    <span className="inline-flex flex-col items-center align-middle">
+      <span className="px-2">{num}</span>
+      <span className="w-full border-t border-foreground/60" />
+      <span className="px-2">{den}</span>
+    </span>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /> Formulae & Plant Equivalents</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Live values derived from {blueprint.siteName} ({blueprint.capacityMw} MW). Energy figures are computed from the latest snapshot — replace with daily accumulators once available.
+          </p>
+        </CardHeader>
+      </Card>
+      <div className="grid gap-4 md:grid-cols-2">
+        <F
+          title="Solar Irradiation (POA)"
+          expression={<span><Frac num={<>(Avg Irradiation × Operating Hours)</>} den={<>1000</>} /> = <Frac num={<>{(avgIrr * operatingHours).toFixed(2)}</>} den={<>1000</>} /></span>}
+          result={poaKwhM2.toFixed(2)}
+          unit="kWh/m²"
+          note="Awaiting MET station; using representative irradiation."
+        />
+        <F
+          title="Performance Ratio (PR)"
+          expression={<span><Frac num={<>Energy Generated (kWh) × 100</>} den={<>Nominal Energy Output (kWh)</>} /> = <Frac num={<>{(energyGenKwh * 100).toFixed(0)}</>} den={<>{(poaKwhM2 * capacityKw).toFixed(0)}</>} /></span>}
+          result={`${pr.toFixed(2)} %`}
+        />
+        <F
+          title="Capacity Utilisation Factor (CUF)"
+          expression={<span><Frac num={<>Total Power Generation × 100</>} den={<>Installed Capacity × 24</>} /> = <Frac num={<>{(instAcKw * 100).toFixed(2)}</>} den={<>{(capacityKw * 24).toFixed(0)}</>} /></span>}
+          result={`${cuf.toFixed(3)} %`}
+        />
+        <F
+          title="Line Loss"
+          expression={<span>LL = 100 − <Frac num={<>Total Energy Exported</>} den={<>Total Energy Generated</>} /> × 100</span>}
+          result="—"
+          unit="%"
+          note="Requires both feed-out meter and inverter accumulators."
+        />
+        <F
+          title="Power in SMB"
+          expression={<>P = Voltage × Total Current  <span className="text-muted-foreground">(kW)</span></>}
+          result={`${instDcKw.toFixed(2)} kW`}
+          note="DC side; sum of all string MPPT inputs."
+        />
+        <F
+          title="Transformer Loss / Efficiency"
+          expression={<>η = <Frac num={<>Output</>} den={<>Input</>} /> × 100      Loss = Output − Input</>}
+          result={`${(97).toFixed(1)} %`}
+          note="Assumed 97% step-up efficiency until live transformer telemetry is wired."
+        />
+      </div>
+      <Card>
+        <CardHeader><CardTitle className="text-sm uppercase tracking-[0.16em] text-muted-foreground">Plant Equivalents</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border bg-emerald-500/5 p-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">CO₂ Reduction</div>
+              <div className="mt-1 text-2xl font-bold text-emerald-600">{co2Tons.toFixed(4)}</div>
+              <div className="text-[11px] text-muted-foreground">tons of CO₂ • 1 kWh ≈ 0.00067 t</div>
+            </div>
+            <div className="rounded-lg border bg-amber-500/5 p-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Diesel Equivalent</div>
+              <div className="mt-1 text-2xl font-bold text-amber-600">{dieselTons.toFixed(3)}</div>
+              <div className="text-[11px] text-muted-foreground">tons of diesel • 1 kWh ≈ 0.099 t</div>
+            </div>
+            <div className="rounded-lg border bg-green-500/5 p-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Trees Planted</div>
+              <div className="mt-1 text-2xl font-bold text-green-600">{trees.toFixed(4)}</div>
+              <div className="text-[11px] text-muted-foreground">trees • 1 kWh ≈ 0.00067</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -784,7 +1176,7 @@ export default function Dashboard() {
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [location, navigate] = useLocation();
-  const VALID_VIEWS = ["overview", "simulation", "analytics", "report", "alerts", "config", "sites", "users", "settings"] as const;
+  const VALID_VIEWS = ["overview", "simulation", "single-line", "formulae", "analytics", "report", "alerts", "config", "sites", "users", "settings"] as const;
   const pathSegment = location.replace(/^\/+/, "").split("/")[0] || "overview";
   const activeView = (VALID_VIEWS as readonly string[]).includes(pathSegment) ? pathSegment : "overview";
   const setActiveView = (view: string) => navigate(`/${view}`);
@@ -1253,6 +1645,8 @@ export default function Dashboard() {
             {[
               { id: "overview", label: "Overview", Icon: LayoutDashboard, adminOnly: false },
               { id: "simulation", label: "Plant Simulation", Icon: Network, adminOnly: false },
+              { id: "single-line", label: "Single-Line Diagram", Icon: Workflow, adminOnly: false },
+              { id: "formulae", label: "Formulae", Icon: Calculator, adminOnly: false },
               { id: "analytics", label: "Telemetry Analytics", Icon: BarChart3, adminOnly: false },
               { id: "report", label: "Reports", Icon: FileText, adminOnly: false },
               { id: "alerts", label: "Alerts", Icon: Bell, adminOnly: false },
@@ -1709,14 +2103,22 @@ export default function Dashboard() {
                     <KPICard title="Latest Voltage" value={latest?.voltageV === null || latest?.voltageV === undefined ? "--" : `${latest.voltageV.toFixed(2)} V`} loading={loading} valueColor={CHART_COLORS.purple} />
                     <KPICard title="Decoded Values" value={decodedRatio} loading={loading} valueColor={latest?.decodedCount ? CHART_COLORS.green : CHART_COLORS.slate} />
                   </div>
-                  <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
+                  <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} latest={latest} />
                 </>
               )}
             </div>
             )}
 
             {activeView === "simulation" && (
-              <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
+              <PlantSimulation blueprint={siteBlueprint} strings={stringRuntime} loading={loading} latest={latest} />
+            )}
+
+            {activeView === "single-line" && (
+              <SingleLineDiagram blueprint={siteBlueprint} strings={stringRuntime} loading={loading} />
+            )}
+
+            {activeView === "formulae" && (
+              <FormulaeView blueprint={siteBlueprint} strings={stringRuntime} />
             )}
 
             {activeView === "analytics" && (
