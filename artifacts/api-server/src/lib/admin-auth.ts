@@ -3,12 +3,8 @@ import type { NextFunction, Request, Response } from "express";
 import { findUserBySessionToken, type PublicUser } from "./auth-service";
 
 const ADMIN_TOKEN_ENV = "ADMIN_API_TOKEN";
-
-declare module "express-serve-static-core" {
-  interface Request {
-    authenticatedUser?: PublicUser | null;
-  }
-}
+// Module augmentation for `Request.authenticatedUser` / `Request.orgContext`
+// lives in `src/types/express.d.ts` so it's loaded by every route file.
 
 const tokensMatch = (a: string, b: string) => {
   const ab = Buffer.from(a);

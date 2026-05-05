@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   serial,
@@ -6,9 +7,22 @@ import {
   uniqueIndex,
   integer,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export type OrgLimits = {
+  maxMembers: number;
+  maxApiKeys: number;
+  maxReadingsPerMonth: number;
+};
+
+export const DEFAULT_ORG_LIMITS: OrgLimits = {
+  maxMembers: 25,
+  maxApiKeys: 10,
+  maxReadingsPerMonth: 1_000_000,
+};
 
 /**
  * Org-level role hierarchy. Higher index = more privileges.
@@ -28,6 +42,10 @@ export const organizationsTable = pgTable(
     id: serial("id").primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull(),
+    limits: jsonb("limits")
+      .$type<OrgLimits>()
+      .notNull()
+      .default(sql`'${sql.raw(JSON.stringify(DEFAULT_ORG_LIMITS))}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

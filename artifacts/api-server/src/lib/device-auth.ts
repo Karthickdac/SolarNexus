@@ -7,7 +7,7 @@ export const DEVICE_TOKEN_PREVIOUS_ENV = "MODBUS_INGEST_TOKEN_PREVIOUS";
 export type TokenSlot = "current" | "previous";
 
 export type AuthResult =
-  | { ok: true; slot: TokenSlot }
+  | { ok: true; slot: TokenSlot; orgId?: number | null; apiKeyId?: number | null }
   | { ok: false; status: 401 | 503; error: string };
 
 export const extractBearerToken = (

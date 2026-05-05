@@ -12,6 +12,10 @@ import {
   authenticateDeviceRequest,
   warnIfPreviousTokenSlot,
 } from "../lib/device-auth";
+import {
+  resolveApiKeyToOrg,
+  API_KEY_PREFIX,
+} from "../lib/api-key-service";
 
 const router: IRouter = Router();
 
@@ -65,7 +69,30 @@ router.get("/modbus/readings", async (req, res): Promise<void> => {
 });
 
 router.post("/modbus/readings", async (req, res): Promise<void> => {
-  const authResult = authenticateDeviceRequest(req);
+  // Prefer per-org API keys; fall back to the legacy shared
+  // MODBUS_INGEST_TOKEN(s) for in-flight devices.
+  const provided =
+    req.get("x-device-key")?.trim() ||
+    (req.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+
+  let resolvedOrgId: number | null = null;
+  let resolvedKeyId: number | null = null;
+  let authResult = authenticateDeviceRequest(req);
+
+  if (provided.startsWith(API_KEY_PREFIX)) {
+    const resolved = await resolveApiKeyToOrg(provided);
+    if (resolved) {
+      resolvedOrgId = resolved.orgId;
+      resolvedKeyId = resolved.keyId;
+      authResult = { ok: true, slot: "current", orgId: resolved.orgId, apiKeyId: resolved.keyId };
+    } else {
+      authResult = {
+        ok: false,
+        status: 401,
+        error: "Unauthorized: API key invalid or revoked.",
+      };
+    }
+  }
 
   if (!authResult.ok) {
     req.log.warn(
@@ -77,6 +104,11 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
   }
 
   warnIfPreviousTokenSlot(req.log, authResult, { source: getSource(req) });
+  // Make resolvedOrgId/resolvedKeyId visible to the rest of the handler
+  // by stashing them on the request so the existing insert path can pick
+  // them up without restructuring this large handler.
+  (req as unknown as { _ingestOrgId?: number | null })._ingestOrgId = resolvedOrgId;
+  void resolvedKeyId;
 
   const rawPayload = req.body;
 
@@ -111,9 +143,12 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
     "trb246";
   const decodedValues = decodeModbusPayload(rawPayload);
 
+  const ingestOrgId =
+    (req as unknown as { _ingestOrgId?: number | null })._ingestOrgId ?? null;
   const [reading] = await db
     .insert(modbusReadingsTable)
     .values({
+      orgId: ingestOrgId,
       deviceId,
       source: getSource(req),
       parsingStatus: "accepted",

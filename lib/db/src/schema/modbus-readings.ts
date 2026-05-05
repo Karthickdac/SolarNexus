@@ -1,7 +1,15 @@
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { index, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 export type ModbusRawPayload = Record<string, unknown>;
 export type ModbusDecodedRegister = {
@@ -30,6 +38,7 @@ export const modbusReadingsTable = pgTable(
   "modbus_readings",
   {
     id: serial("id").primaryKey(),
+    orgId: integer("org_id"),
     deviceId: text("device_id").notNull(),
     source: text("source"),
     parsingStatus: text("parsing_status").notNull().default("accepted"),

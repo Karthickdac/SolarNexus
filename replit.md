@@ -113,6 +113,84 @@ If a token is suspected to be compromised, you can skip step 2's grace period by
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
 
+## Multi-Tenant SaaS (Phases 1–8)
+
+Phases 2–7 add the SaaS surface on top of the foundations: password reset,
+email invitations, per-org API keys, per-org usage limits, and an audit-log
+read API. Phase 8 wires these into a `/settings` page in the dashboard with
+tabs for Members, Invitations, API Keys, Audit Log, and Usage. Per-org data
+isolation (Phase 6) is partial: `modbus_readings.org_id` is now stamped at
+ingest time when an `sn_live_…` API key is used, but route-level filtering by
+org is deferred to a follow-up so the existing single-org dashboard keeps
+working.
+
+### New endpoints
+
+- `POST /api/auth/password-reset/request` — accepts `{email}`, always
+  returns 204; emails a 30-minute reset link if the user exists.
+- `POST /api/auth/password-reset/confirm` — accepts `{token, newPassword}`.
+- `GET  /api/invitations/:token` — public lookup so the accept page can
+  show org name + role.
+- `POST /api/invitations/:token/accept` — accepts `{name, password}`,
+  creates the user (if needed) and the org membership.
+- `GET    /api/orgs/:slug/members`            — list (viewer+).
+- `PATCH  /api/orgs/:slug/members/:userId/role` — change role (admin+,
+  owners only can grant `owner`).
+- `DELETE /api/orgs/:slug/members/:userId`   — remove (admin+).
+- `GET    /api/orgs/:slug/invitations`       — list pending (admin+).
+- `POST   /api/orgs/:slug/invitations`       — create (admin+).
+- `DELETE /api/orgs/:slug/invitations/:id`   — revoke (admin+).
+- `GET    /api/orgs/:slug/api-keys`          — list (admin+, secret never
+  returned).
+- `POST   /api/orgs/:slug/api-keys`          — create (admin+, plaintext
+  secret returned **once** in this response only).
+- `DELETE /api/orgs/:slug/api-keys/:id`      — revoke (admin+).
+- `GET    /api/orgs/:slug/audit-log`         — paginated (admin+).
+- `GET    /api/orgs/:slug/usage`             — counts vs limits (viewer+).
+
+`requireOrgRole(minRole)` (`src/lib/org-context.ts`) is the single
+middleware used to gate every `/orgs/:slug/*` endpoint. Super-admins
+bypass membership checks and always have implicit `owner`.
+
+### Modbus ingest
+
+`POST /api/modbus/readings` now also accepts a per-org API key in
+`x-device-key` (or `Authorization: Bearer …`). Keys are formatted
+`sn_live_<48-hex>`; the server hashes with SHA-256 and only stores the
+hash plus a public `prefix` (`sn_live_<8-hex>`) for display. When an API
+key is used, the inserted reading row is stamped with the resolved
+`org_id`. The legacy `MODBUS_INGEST_TOKEN` continues to work for in-flight
+devices.
+
+### New schema
+
+- `password_resets` (token_hash unique, user_id, expires_at, used_at).
+- `invitations` (token_hash unique, org_id, email, role, invited_by,
+  expires_at, accepted_at).
+- `api_keys` (org_id, key_hash unique, prefix, label, created_by,
+  last_used_at, revoked_at).
+- `organizations.limits jsonb` — `{ maxMembers, maxApiKeys,
+  maxReadingsPerMonth }`. Defaults: 25 / 10 / 1,000,000.
+- `modbus_readings.org_id` — nullable (legacy rows stay null).
+
+### SMTP configuration
+
+Set `SMTP_HOST`, `SMTP_PORT` (default `587`), `SMTP_USER`, `SMTP_PASS`,
+`SMTP_FROM`, `SMTP_SECURE` (`true` for implicit TLS), and `APP_BASE_URL`
+(public dashboard URL used in emailed links). When SMTP is **not**
+configured the API logs the email body so dev environments can copy
+reset / invite links from the server log instead of receiving a real
+email.
+
+### Dashboard
+
+- New routes: `/forgot-password`, `/reset-password`, `/accept-invite`,
+  and `/settings/{members|invites|api-keys|audit|usage}`.
+- "Forgot password?" link added to `/login`.
+- `/settings` is a tabbed page (`pages/org-settings.tsx`) talking to the
+  endpoints above through `src/lib/saas-api.ts` (a tiny session-aware
+  fetch wrapper that bypasses the OpenAPI codegen).
+
 ## Multi-Tenant SaaS (Phase 1 — Foundations)
 
 SolarNexus is being converted from single-tenant admin-seeded auth into a
