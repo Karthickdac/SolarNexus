@@ -6,3 +6,9 @@ id = "O62YdGvw5rCfu78AMinT0"
 uri = "file://clients/agent-relay/dist/AgentRelay-win-x64.zip"
 type = "unspecified"
 title = "Agent_relay Windows build (Phase 1)"
+
+[[outputs]]
+id = "nTPJDFKRXtZ96gPLAJkhI"
+uri = "file://DEPLOY-CLOUDPANEL.md"
+type = "text"
+title = "CloudPanel Deployment Guide"
