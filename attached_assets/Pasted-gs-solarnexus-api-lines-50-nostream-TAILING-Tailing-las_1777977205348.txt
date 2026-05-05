@@ -1,0 +1,53 @@
+gs solarnexus-api --lines 50 --nostream
+[TAILING] Tailing last 50 lines for [solarnexus-api] process (change the value with --lines option)
+/home/automystics-solarnexus/.pm2/logs/solarnexus-api-error.log last 50 lines:
+0|solarnex | 2026-05-05T10:27:27: Error: Failed query: select "id", "scope", "enabled", "threshold_minutes", "cooldown_minutes", "channels", "updated_at" from "notification_settings" where "notification_settings"."scope" like $1
+0|solarnex | 2026-05-05T10:27:27: params: site:%
+0|solarnex | 2026-05-05T10:27:27:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:27:27:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:27:27:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:27:27:     at async listSiteThresholds (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/alerts-service.ts:40:16)
+0|solarnex | 2026-05-05T10:27:27:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/alerts.ts:74:24)
+0|solarnex | 2026-05-05T10:27:38: Error: Failed query: select "id", "device_id", "severity", "minutes_since_data", "threshold_minutes", "message", "dispatch", "acknowledged_at", "created_at" from "device_alert_events" order by "device_alert_events"."created_at" desc limit $1
+0|solarnex | 2026-05-05T10:27:38: params: 25
+0|solarnex | 2026-05-05T10:27:38:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:27:38:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/alerts.ts:232:20)
+0|solarnex | 2026-05-05T10:27:38: Error: Failed query: select "id", "device_id", "source", "parsing_status", "token_slot", "raw_payload", "decoded_values", "received_at" from "modbus_readings" order by "modbus_readings"."received_at" desc limit $1
+0|solarnex | 2026-05-05T10:27:38: params: 100
+0|solarnex | 2026-05-05T10:27:38:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:27:38:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/modbus.ts:57:20)
+0|solarnex | 2026-05-05T10:27:38: Error: Failed query: select "id", "scope", "enabled", "threshold_minutes", "cooldown_minutes", "channels", "updated_at" from "notification_settings" where "notification_settings"."scope" like $1
+0|solarnex | 2026-05-05T10:27:38: params: site:%
+0|solarnex | 2026-05-05T10:27:38:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:27:38:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:27:38:     at async listSiteThresholds (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/alerts-service.ts:40:16)
+0|solarnex | 2026-05-05T10:27:38:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/alerts.ts:74:24)
+0|solarnex | 2026-05-05T10:31:42: Error: Failed query: select "id", "email", "name", "role", "password_hash", "site_ids", "created_at", "updated_at" from "users" where "users"."email" = $1 limit $2
+0|solarnex | 2026-05-05T10:31:42: params: admin@automystics.tech,1
+0|solarnex | 2026-05-05T10:31:42:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:31:42:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:31:42:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:31:42:     at async findUserByEmail (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:112:16)
+0|solarnex | 2026-05-05T10:31:42:     at async loginWithPassword (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:162:16)
+0|solarnex | 2026-05-05T10:31:42:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/auth.ts:24:20)
+0|solarnex | 2026-05-05T10:31:50: Error: Failed query: select "id", "email", "name", "role", "password_hash", "site_ids", "created_at", "updated_at" from "users" where "users"."email" = $1 limit $2
+0|solarnex | 2026-05-05T10:31:50: params: admin@automystics.tech,1
+0|solarnex | 2026-05-05T10:31:50:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:31:50:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:31:50:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:31:50:     at async findUserByEmail (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:112:16)
+0|solarnex | 2026-05-05T10:31:50:     at async loginWithPassword (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:162:16)
+0|solarnex | 2026-05-05T10:31:50:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/auth.ts:24:20)
+0|solarnex | 2026-05-05T10:32:26: Error: Failed query: select "id", "email", "name", "role", "password_hash", "site_ids", "created_at", "updated_at" from "users" where "users"."email" = $1 limit $2
+0|solarnex | 2026-05-05T10:32:26: params: admin@solarnexus.automystics.tech,1
+0|solarnex | 2026-05-05T10:32:26:     at NodePgPreparedQuery.queryWithCache (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/pg-core/session.ts:73:11)
+0|solarnex | 2026-05-05T10:32:26:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|solarnex | 2026-05-05T10:32:26:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.18.0_pg@8.20.0/node_modules/src/node-postgres/session.ts:154:19)
+0|solarnex | 2026-05-05T10:32:26:     at async findUserByEmail (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:112:16)
+0|solarnex | 2026-05-05T10:32:26:     at async loginWithPassword (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/lib/auth-service.ts:162:16)
+0|solarnex | 2026-05-05T10:32:26:     at async <anonymous> (/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server/src/routes/auth.ts:24:20)
