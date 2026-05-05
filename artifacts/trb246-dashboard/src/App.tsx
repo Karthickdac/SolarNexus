@@ -10,7 +10,6 @@ import LoginPage from "./pages/login";
 import ForgotPasswordPage from "./pages/forgot-password";
 import ResetPasswordPage from "./pages/reset-password";
 import AcceptInvitePage from "./pages/accept-invite";
-import OrgSettingsPage from "./pages/org-settings";
 import { getStoredToken } from "@/lib/auth";
 
 // Attach the active session token (preferred) or the legacy admin token
@@ -70,15 +69,6 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
-function ProtectedSettings() {
-  const authed = useIsAuthenticated();
-  const [, navigate] = useLocation();
-  useEffect(() => {
-    if (!authed) navigate("/login", { replace: true });
-  }, [authed, navigate]);
-  if (!authed) return null;
-  return <OrgSettingsPage />;
-}
 
 function Router() {
   return (
@@ -87,8 +77,8 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/accept-invite" component={AcceptInvitePage} />
-      <Route path="/settings" component={ProtectedSettings} />
-      <Route path="/settings/:tab" component={ProtectedSettings} />
+      <Route path="/settings" component={ProtectedDashboard} />
+      <Route path="/settings/:tab" component={ProtectedDashboard} />
       <Route path="/" component={ProtectedDashboard} />
       <Route path="/overview" component={ProtectedDashboard} />
       <Route path="/simulation" component={ProtectedDashboard} />

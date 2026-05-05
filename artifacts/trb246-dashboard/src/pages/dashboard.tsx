@@ -37,6 +37,7 @@ import {
   Zap,
 } from "lucide-react";
 import { clearSession, getStoredUser } from "@/lib/auth";
+import OrgSettingsPage from "./org-settings";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   deleteSiteStalenessThreshold,
@@ -605,7 +606,7 @@ export default function Dashboard() {
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [location, navigate] = useLocation();
-  const VALID_VIEWS = ["overview", "simulation", "analytics", "report", "alerts", "config", "sites", "users"] as const;
+  const VALID_VIEWS = ["overview", "simulation", "analytics", "report", "alerts", "config", "sites", "users", "settings"] as const;
   const pathSegment = location.replace(/^\/+/, "").split("/")[0] || "overview";
   const activeView = (VALID_VIEWS as readonly string[]).includes(pathSegment) ? pathSegment : "overview";
   const setActiveView = (view: string) => navigate(`/${view}`);
@@ -1746,6 +1747,8 @@ export default function Dashboard() {
             {(activeView === "sites" || activeView === "users") && !isSuperAdmin && (
               <Card><CardContent className="p-6 text-sm text-muted-foreground">You need super admin access to view this page.</CardContent></Card>
             )}
+
+            {activeView === "settings" && <OrgSettingsPage />}
           </div>
         </main>
       </div>
