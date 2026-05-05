@@ -19,3 +19,4 @@
 
 export * from "./modbus-readings";
 export * from "./alerts";
+export * from "./users";

@@ -14,7 +14,69 @@ tags:
     description: Modbus reader ingestion operations
   - name: alerts
     description: Stale-device alert preferences and event log
+  - name: auth
+    description: User authentication for the desktop and web clients
 paths:
+  /auth/login:
+    post:
+      operationId: loginWithPassword
+      tags: [auth]
+      summary: Exchange email + password for a session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Missing fields
+        "401":
+          description: Invalid credentials
+  /auth/me:
+    get:
+      operationId: getAuthenticatedUser
+      tags: [auth]
+      summary: Return the user matching the supplied bearer token
+      responses:
+        "200":
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthenticatedUserResponse"
+        "401":
+          description: Missing or invalid session
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoke the supplied session token
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResult"
+  /auth/ping:
+    get:
+      operationId: authPing
+      tags: [auth]
+      summary: Reachability + auth probe used by the desktop client
+      responses:
+        "200":
+          description: Reachability info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthPingResult"
   /healthz:
     get:
       operationId: healthCheck
@@ -757,4 +819,66 @@ components:
         event:
           $ref: "#/components/schemas/DeviceAlertEvent"
       required: [event]
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [super-admin, operator]
+        siteIds:
+          type: array
+          items:
+            type: string
+      required: [id, email, name, role, siteIds]
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+      required: [email, password]
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/AuthUser"
+      required: [token, expiresAt, user]
+    AuthenticatedUserResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+      required: [user]
+    LogoutResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+    AuthPingResult:
+      type: object
+      properties:
+        reachable:
+          type: boolean
+        authenticated:
+          type: boolean
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+      required: [reachable, authenticated]
 

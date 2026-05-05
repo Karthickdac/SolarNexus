@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startStalenessMonitor } from "./lib/alerts-service";
+import { seedDefaultAdmin } from "./lib/auth-service";
 
 const rawPort = process.env["PORT"];
 const isLocalRuntime =
@@ -53,4 +54,7 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startStalenessMonitor();
+  seedDefaultAdmin().catch((err) => {
+    logger.warn({ err }, "Default admin seed failed");
+  });
 });

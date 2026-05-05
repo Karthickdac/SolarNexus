@@ -8,6 +8,10 @@
 
 export * from "./alertTestBody";
 export * from "./alertTestResponse";
+export * from "./authenticatedUserResponse";
+export * from "./authPingResult";
+export * from "./authUser";
+export * from "./authUserRole";
 export * from "./deviceAlertChannelDispatch";
 export * from "./deviceAlertChannelDispatchChannel";
 export * from "./deviceAlertChannelDispatchStatus";
@@ -22,6 +26,9 @@ export * from "./healthStatus";
 export * from "./listAlertEventsParams";
 export * from "./listModbusReadingsParams";
 export * from "./listModbusReadingsTokenSlot";
+export * from "./loginRequest";
+export * from "./loginResponse";
+export * from "./logoutResult";
 export * from "./modbusDecodedRegister";
 export * from "./modbusDecodedRegisterStatus";
 export * from "./modbusDecodedValues";

@@ -8,6 +8,67 @@
 import * as zod from "zod";
 
 /**
+ * @summary Exchange email + password for a session token
+ */
+
+export const LoginWithPasswordBody = zod.object({
+  email: zod.string().email(),
+  password: zod.string().min(1),
+});
+
+export const LoginWithPasswordResponse = zod.object({
+  token: zod.string(),
+  expiresAt: zod.coerce.date(),
+  user: zod.object({
+    id: zod.number(),
+    email: zod.string(),
+    name: zod.string(),
+    role: zod.enum(["super-admin", "operator"]),
+    siteIds: zod.array(zod.string()),
+  }),
+});
+
+/**
+ * @summary Return the user matching the supplied bearer token
+ */
+export const GetAuthenticatedUserResponse = zod.object({
+  user: zod.object({
+    id: zod.number(),
+    email: zod.string(),
+    name: zod.string(),
+    role: zod.enum(["super-admin", "operator"]),
+    siteIds: zod.array(zod.string()),
+  }),
+});
+
+/**
+ * @summary Revoke the supplied session token
+ */
+export const LogoutResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Reachability + auth probe used by the desktop client
+ */
+export const AuthPingResponse = zod.object({
+  reachable: zod.boolean(),
+  authenticated: zod.boolean(),
+  user: zod
+    .union([
+      zod.object({
+        id: zod.number(),
+        email: zod.string(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "operator"]),
+        siteIds: zod.array(zod.string()),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
  * Returns server health status
  * @summary Health check
  */

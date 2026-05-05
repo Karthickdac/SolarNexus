@@ -34,6 +34,14 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `artifacts/api-server` — Express API server mounted at `/api`.
 - `artifacts/trb246-dashboard` — TRB246 Modbus monitoring dashboard and report UI mounted at `/`.
 
+## Non-artifact clients
+
+- `clients/agent-relay/` — Windows desktop client (.NET 8 WPF + Worker Service)
+  that authenticates against `/api/auth/login`, pulls historical readings
+  and alerts, and relays local Modbus/TCP register reads back up using
+  `MODBUS_INGEST_TOKEN`. Build with `clients/agent-relay/publish.sh`;
+  output goes to `clients/agent-relay/dist/AgentRelay-win-x64.zip`.
+
 ## API Endpoints
 
 - `GET /api/healthz` — API health check.
@@ -43,9 +51,16 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - `GET /api/alerts/events?limit=50&since=ISO` — list recent stale-device alert events with per-channel dispatch results.
 - `POST /api/alerts/test` — dispatch a synthetic alert through the currently configured channels (useful for verifying webhook/email setup).
 - `POST /api/alerts/evaluate` — run the staleness evaluator immediately instead of waiting for the next 60-second tick.
+- `POST /api/auth/login` — exchange `{ email, password }` for a session bearer token (7-day TTL). Used by the desktop client.
+- `GET /api/auth/me` — returns the authenticated user when a valid session bearer is supplied.
+- `POST /api/auth/logout` — revoke the current session token.
+- `GET /api/auth/ping` — reachability + auth probe (no auth required).
+- `requireAdminAuth` now accepts EITHER the static `ADMIN_API_TOKEN` OR a per-user session bearer whose user has `role=super-admin`.
 
 ## Database Tables
 
+- `users` — application users (email unique, scrypt password hash, `role` of `super-admin` or `operator`, optional `siteIds[]`). Seeded with a default super-admin via `DEFAULT_ADMIN_EMAIL`/`DEFAULT_ADMIN_PASSWORD` (or `admin@local.dev`/`password123` in `NODE_ENV=development|test`). Seeder is idempotent — never overwrites existing passwords.
+- `user_sessions` — opaque bearer tokens (`token` unique) with `expiresAt` (default 7 days, override via `AUTH_SESSION_TTL_HOURS`).
 - `modbus_readings` — stores raw Modbus/TRB246 HTTP payloads, intake metadata, and decoded register values. Unknown or invalid registers are retained in `decoded_values.registers` with explicit status/error details.
 - `notification_settings` — single global row (`scope = 'global'`) holding the staleness threshold, repeat cooldown, master enabled flag, and per-channel config (in-app, webhook, email).
 - `device_alert_events` — append-only log of stale-device alerts with severity (`warning`/`fault`/`resolved`), how long the device had been silent, the threshold used, the user-facing message, and the per-channel dispatch result (`delivered`/`skipped`/`failed`).

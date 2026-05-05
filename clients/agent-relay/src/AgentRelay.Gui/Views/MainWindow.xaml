@@ -1,0 +1,207 @@
+<Window x:Class="AgentRelay.Gui.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Agent Relay" Width="1100" Height="720"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel>
+    <!-- Top bar -->
+    <Border DockPanel.Dock="Top" Background="#0F172A" Padding="16,10">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="Agent Relay" Foreground="White" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <TextBlock x:Name="ApiUrlLabel" Foreground="#94A3B8" Margin="16,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <TextBlock x:Name="UserLabel" Foreground="#E2E8F0" VerticalAlignment="Center" Margin="0,0,16,0"/>
+          <Button Content="Sign out" Click="LogoutButton_Click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Status bar -->
+    <Border DockPanel.Dock="Bottom" Background="#F1F5F9" Padding="12,6">
+      <TextBlock x:Name="StatusBarText" Text="Ready" Foreground="#475569"/>
+    </Border>
+
+    <TabControl Padding="12">
+      <!-- DASHBOARD -->
+      <TabItem Header="Dashboard">
+        <StackPanel Margin="12">
+          <TextBlock Text="Connection" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <TextBlock x:Name="ConnStatus" Margin="0,0,0,16"/>
+          <Button Content="Refresh status" Width="160" HorizontalAlignment="Left" Click="RefreshStatus_Click"/>
+          <TextBlock Text="Local relay" FontSize="16" FontWeight="SemiBold" Margin="0,24,0,8"/>
+          <TextBlock x:Name="RelayStatus" Margin="0,0,0,8"/>
+          <StackPanel Orientation="Horizontal">
+            <Button x:Name="StartRelayBtn" Content="Start relay" Click="StartRelay_Click"/>
+            <Button x:Name="StopRelayBtn" Content="Stop relay" Click="StopRelay_Click" IsEnabled="False"/>
+          </StackPanel>
+          <TextBlock Text="Live tail" FontSize="16" FontWeight="SemiBold" Margin="0,24,0,8"/>
+          <TextBox x:Name="LiveTailBox" Height="220" IsReadOnly="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+        </StackPanel>
+      </TabItem>
+
+      <!-- READINGS -->
+      <TabItem Header="Readings">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="12">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="Site:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <TextBox x:Name="ReadingsSiteBox" Width="120"/>
+              <TextBlock Text="From:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <DatePicker x:Name="ReadingsFromPicker"/>
+              <TextBlock Text="To:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <DatePicker x:Name="ReadingsToPicker"/>
+              <Button Content="Refresh" Click="LoadReadings_Click" Margin="12,0,0,0"/>
+              <Button Content="Export CSV" Click="ExportCsv_Click"/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="ReadingsGrid" AutoGenerateColumns="False" IsReadOnly="True" Margin="12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="80"/>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceId}" Width="160"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding ParsingStatus}" Width="100"/>
+              <DataGridTextColumn Header="Received" Binding="{Binding ReceivedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Width="180"/>
+              <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- ALERTS -->
+      <TabItem Header="Alerts">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="12">
+            <StackPanel Orientation="Horizontal">
+              <Button Content="Refresh" Click="LoadAlerts_Click"/>
+              <Button Content="Acknowledge selected" Click="AckAlert_Click" IsEnabled="False" ToolTip="Server-side acknowledge endpoint ships in Phase 2."/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="AlertsGrid" AutoGenerateColumns="False" IsReadOnly="True" Margin="12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="80"/>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceId}" Width="160"/>
+              <DataGridTextColumn Header="Site" Binding="{Binding SiteId}" Width="120"/>
+              <DataGridTextColumn Header="Severity" Binding="{Binding Severity}" Width="100"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
+              <DataGridTextColumn Header="Triggered" Binding="{Binding TriggeredAt, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}'}" Width="180"/>
+              <DataGridTextColumn Header="Message" Binding="{Binding Message}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- SITES -->
+      <TabItem Header="Sites &amp; thresholds">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="12">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="Site ID:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <TextBox x:Name="ThSiteBox" Width="160"/>
+              <TextBlock Text="Threshold (min):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ThMinBox" Width="80" Text="30"/>
+              <TextBlock Text="Cooldown (min):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ThCoolBox" Width="80" Text="60"/>
+              <Button Content="Save threshold" Click="SaveThreshold_Click" Margin="12,0,0,0"/>
+              <Button Content="Refresh" Click="LoadThresholds_Click"/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="ThresholdsGrid" AutoGenerateColumns="False" IsReadOnly="True" Margin="12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Site" Binding="{Binding SiteId}" Width="200"/>
+              <DataGridTextColumn Header="Threshold (min)" Binding="{Binding ThresholdMinutes}" Width="180"/>
+              <DataGridTextColumn Header="Cooldown (min)" Binding="{Binding CooldownMinutes}" Width="180"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- DEVICES -->
+      <TabItem Header="Device → site">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="12">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="Site ID:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <TextBox x:Name="AssignSiteBox" Width="120"/>
+              <TextBlock Text="Device IDs (comma-separated):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="AssignDevicesBox" Width="320"/>
+              <Button Content="Replace" Click="SaveAssignments_Click" Margin="12,0,0,0"/>
+              <Button Content="Refresh" Click="LoadAssignments_Click"/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="AssignmentsGrid" AutoGenerateColumns="False" IsReadOnly="True" Margin="12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceId}" Width="240"/>
+              <DataGridTextColumn Header="Site" Binding="{Binding SiteId}" Width="240"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- MODBUS -->
+      <TabItem Header="Local Modbus">
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Padding="12">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="Device ID:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <TextBox x:Name="ModDeviceBox" Width="140" Text="trb246"/>
+              <TextBlock Text="Host:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ModHostBox" Width="160" Text="192.168.1.10"/>
+              <TextBlock Text="Port:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ModPortBox" Width="60" Text="502"/>
+              <TextBlock Text="UnitID:" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ModUnitBox" Width="40" Text="1"/>
+              <TextBlock Text="Poll(s):" VerticalAlignment="Center" Margin="12,0,4,0"/>
+              <TextBox x:Name="ModPollBox" Width="60" Text="30"/>
+              <Button Content="Add device" Click="AddModbus_Click" Margin="12,0,0,0"/>
+              <Button Content="Remove selected" Click="RemoveModbus_Click"/>
+            </StackPanel>
+          </Border>
+          <DataGrid x:Name="ModbusGrid" AutoGenerateColumns="False" IsReadOnly="True" Margin="12,0,12,12">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceId}" Width="140"/>
+              <DataGridTextColumn Header="Host" Binding="{Binding Host}" Width="160"/>
+              <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="60"/>
+              <DataGridTextColumn Header="Unit" Binding="{Binding UnitId}" Width="60"/>
+              <DataGridTextColumn Header="Poll(s)" Binding="{Binding PollIntervalSeconds}" Width="80"/>
+              <DataGridTextColumn Header="Registers" Binding="{Binding Registers.Count}" Width="80"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+      <!-- SETTINGS -->
+      <TabItem Header="Settings">
+        <StackPanel Margin="16">
+          <TextBlock Text="API base URL"/>
+          <TextBox x:Name="SettingsUrlBox"/>
+          <TextBlock Text="Device ingest token (used by the relay to push readings)"/>
+          <PasswordBox x:Name="SettingsTokenBox"/>
+          <TextBlock Text="Log level"/>
+          <ComboBox x:Name="SettingsLogLevel" SelectedIndex="1">
+            <ComboBoxItem Content="Debug"/>
+            <ComboBoxItem Content="Information"/>
+            <ComboBoxItem Content="Warning"/>
+            <ComboBoxItem Content="Error"/>
+          </ComboBox>
+          <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+            <Button Content="Save" Click="SaveSettings_Click" Background="{StaticResource AccentBrush}" Foreground="White"/>
+            <TextBlock x:Name="SettingsStatus" Foreground="#16A34A" VerticalAlignment="Center"/>
+          </StackPanel>
+          <TextBlock Margin="0,24,0,4" FontWeight="SemiBold">Windows Service</TextBlock>
+          <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap">
+            The relay can also run as a Windows Service. After installing, run the
+            following from an elevated command prompt (the EXE is included in this
+            installation directory):
+          </TextBlock>
+          <TextBox IsReadOnly="True" Text="sc.exe create AgentRelaySvc binPath= &quot;C:\Path\To\AgentRelay.Service.exe&quot; start= auto" FontFamily="Consolas"/>
+          <TextBox IsReadOnly="True" Text="sc.exe start AgentRelaySvc" FontFamily="Consolas"/>
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

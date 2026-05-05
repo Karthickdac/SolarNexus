@@ -292,6 +292,47 @@ export interface AlertTestResponse {
   event: DeviceAlertEvent;
 }
 
+export type AuthUserRole = (typeof AuthUserRole)[keyof typeof AuthUserRole];
+
+export const AuthUserRole = {
+  "super-admin": "super-admin",
+  operator: "operator",
+} as const;
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  role: AuthUserRole;
+  siteIds: string[];
+}
+
+export interface LoginRequest {
+  email: string;
+  /** @minLength 1 */
+  password: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  expiresAt: string;
+  user: AuthUser;
+}
+
+export interface AuthenticatedUserResponse {
+  user: AuthUser;
+}
+
+export interface LogoutResult {
+  ok: boolean;
+}
+
+export interface AuthPingResult {
+  reachable: boolean;
+  authenticated: boolean;
+  user?: AuthUser | null;
+}
+
 export type ListModbusReadingsParams = {
   /**
    * @minimum 1

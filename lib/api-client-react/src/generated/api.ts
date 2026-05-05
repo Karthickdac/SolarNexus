@@ -19,6 +19,8 @@ import type {
 import type {
   AlertTestBody,
   AlertTestResponse,
+  AuthPingResult,
+  AuthenticatedUserResponse,
   DeviceAlertEventsList,
   DeviceSiteAssignmentsList,
   ErrorResponse,
@@ -26,6 +28,9 @@ import type {
   HealthStatus,
   ListAlertEventsParams,
   ListModbusReadingsParams,
+  LoginRequest,
+  LoginResponse,
+  LogoutResult,
   ModbusReadingAck,
   ModbusReadingIngestBody,
   ModbusReadingsList,
@@ -45,6 +50,313 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
+
+/**
+ * @summary Exchange email + password for a session token
+ */
+export const getLoginWithPasswordUrl = () => {
+  return `/api/auth/login`;
+};
+
+export const loginWithPassword = async (
+  loginRequest: LoginRequest,
+  options?: RequestInit,
+): Promise<LoginResponse> => {
+  return customFetch<LoginResponse>(getLoginWithPasswordUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(loginRequest),
+  });
+};
+
+export const getLoginWithPasswordMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loginWithPassword>>,
+    TError,
+    { data: BodyType<LoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof loginWithPassword>>,
+  TError,
+  { data: BodyType<LoginRequest> },
+  TContext
+> => {
+  const mutationKey = ["loginWithPassword"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof loginWithPassword>>,
+    { data: BodyType<LoginRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return loginWithPassword(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LoginWithPasswordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof loginWithPassword>>
+>;
+export type LoginWithPasswordMutationBody = BodyType<LoginRequest>;
+export type LoginWithPasswordMutationError = ErrorType<void>;
+
+/**
+ * @summary Exchange email + password for a session token
+ */
+export const useLoginWithPassword = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof loginWithPassword>>,
+    TError,
+    { data: BodyType<LoginRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof loginWithPassword>>,
+  TError,
+  { data: BodyType<LoginRequest> },
+  TContext
+> => {
+  return useMutation(getLoginWithPasswordMutationOptions(options));
+};
+
+/**
+ * @summary Return the user matching the supplied bearer token
+ */
+export const getGetAuthenticatedUserUrl = () => {
+  return `/api/auth/me`;
+};
+
+export const getAuthenticatedUser = async (
+  options?: RequestInit,
+): Promise<AuthenticatedUserResponse> => {
+  return customFetch<AuthenticatedUserResponse>(getGetAuthenticatedUserUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAuthenticatedUserQueryKey = () => {
+  return [`/api/auth/me`] as const;
+};
+
+export const getGetAuthenticatedUserQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAuthenticatedUser>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAuthenticatedUser>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAuthenticatedUserQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAuthenticatedUser>>
+  > = ({ signal }) => getAuthenticatedUser({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAuthenticatedUser>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAuthenticatedUserQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAuthenticatedUser>>
+>;
+export type GetAuthenticatedUserQueryError = ErrorType<void>;
+
+/**
+ * @summary Return the user matching the supplied bearer token
+ */
+
+export function useGetAuthenticatedUser<
+  TData = Awaited<ReturnType<typeof getAuthenticatedUser>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAuthenticatedUser>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAuthenticatedUserQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Revoke the supplied session token
+ */
+export const getLogoutUrl = () => {
+  return `/api/auth/logout`;
+};
+
+export const logout = async (options?: RequestInit): Promise<LogoutResult> => {
+  return customFetch<LogoutResult>(getLogoutUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getLogoutMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof logout>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof logout>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["logout"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof logout>>,
+    void
+  > = () => {
+    return logout(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LogoutMutationResult = NonNullable<
+  Awaited<ReturnType<typeof logout>>
+>;
+
+export type LogoutMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Revoke the supplied session token
+ */
+export const useLogout = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof logout>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof logout>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getLogoutMutationOptions(options));
+};
+
+/**
+ * @summary Reachability + auth probe used by the desktop client
+ */
+export const getAuthPingUrl = () => {
+  return `/api/auth/ping`;
+};
+
+export const authPing = async (
+  options?: RequestInit,
+): Promise<AuthPingResult> => {
+  return customFetch<AuthPingResult>(getAuthPingUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAuthPingQueryKey = () => {
+  return [`/api/auth/ping`] as const;
+};
+
+export const getAuthPingQueryOptions = <
+  TData = Awaited<ReturnType<typeof authPing>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof authPing>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAuthPingQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof authPing>>> = ({
+    signal,
+  }) => authPing({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof authPing>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type AuthPingQueryResult = NonNullable<
+  Awaited<ReturnType<typeof authPing>>
+>;
+export type AuthPingQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Reachability + auth probe used by the desktop client
+ */
+
+export function useAuthPing<
+  TData = Awaited<ReturnType<typeof authPing>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof authPing>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getAuthPingQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * Returns server health status
