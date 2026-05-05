@@ -456,6 +456,27 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
   const warning = strings.filter((item) => item.status === "warning").length;
   const fault = strings.filter((item) => item.status === "fault").length;
   const health = strings.length ? Math.round((online / strings.length) * 100) : 0;
+  const totalPowerW = strings.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
+  const livePowerLabel = totalPowerW >= 1000
+    ? `${(totalPowerW / 1000).toFixed(2)} kW`
+    : `${totalPowerW.toFixed(1)} W`;
+
+  // Compute inverter status once so both the line glow and the inverter
+  // node share the same color.
+  const inverterStatusById = new Map<string, StatusLevel>();
+  siteBlueprint.inverters.forEach((inverter) => {
+    const linked = strings.filter((item) => item.string.inverterId === inverter.id);
+    const status: StatusLevel = linked.some((item) => item.status === "fault")
+      ? "fault"
+      : linked.some((item) => item.status === "warning")
+        ? "warning"
+        : "online";
+    inverterStatusById.set(inverter.id, status);
+  });
+
+  // Plant-wide aggregated status drives the SCADA → Grid trunk line.
+  const trunkStatus: StatusLevel = fault > 0 ? "fault" : warning > 0 ? "warning" : "online";
+  const trunkColor = statusColor(trunkStatus);
 
   return (
     <Card className="overflow-hidden">
@@ -466,11 +487,18 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
             Site Blueprint Simulation
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {siteBlueprint.siteName} • {siteBlueprint.capacityMw} MW • layout driven from site configuration
+            {siteBlueprint.siteName} • {siteBlueprint.capacityMw} MW • live single-line diagram
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge className="bg-green-600 text-white">{online} online</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden flex-col items-end leading-tight md:flex">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Live output</span>
+            <span className="text-base font-bold text-emerald-600">{livePowerLabel}</span>
+          </div>
+          <Badge className="bg-emerald-600 text-white">
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+            {online} online
+          </Badge>
           <Badge className="bg-amber-500 text-white">{warning} warning</Badge>
           <Badge className="bg-red-600 text-white">{fault} fault</Badge>
         </div>
@@ -480,81 +508,198 @@ function PlantSimulation({ blueprint, strings, loading }: { blueprint: SiteBluep
           <Skeleton className="h-[520px] w-full rounded-xl" />
         ) : (
           <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
-            <div className="relative min-h-[520px] overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_top_left,rgba(255,153,0,0.16),transparent_28%),linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)))]">
-              <div className="absolute inset-0 opacity-[0.28]" style={{ backgroundImage: "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+            <div className="relative min-h-[560px] overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_top_left,rgba(255,153,0,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.10),transparent_35%),linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)))]">
+              {/* Engineering grid backdrop */}
+              <div className="pointer-events-none absolute inset-0 opacity-[0.22]" style={{ backgroundImage: "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+              <div className="pointer-events-none absolute inset-0 opacity-[0.12]" style={{ backgroundImage: "linear-gradient(hsl(var(--border)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "140px 140px" }} />
+
+              {/* Zones with gradient panels and corner ticks */}
               {siteBlueprint.zones.map((zone) => (
                 <div
                   key={zone.id}
-                  className="absolute rounded-xl border border-border/80 bg-background/60 p-3 backdrop-blur-sm"
+                  className="absolute rounded-xl border border-border/80 bg-background/55 p-3 backdrop-blur-sm shadow-sm"
                   style={{ left: `${zone.x}%`, top: `${zone.y}%`, width: `${zone.width}%`, height: `${zone.height}%` }}
                 >
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{zone.name}</div>
+                  <div className="absolute -top-2 left-3 rounded-full border bg-card px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    {zone.name}
+                  </div>
+                  {/* Subtle solar-panel cell pattern */}
+                  <div className="pointer-events-none absolute inset-3 rounded-lg opacity-30" style={{ backgroundImage: "linear-gradient(rgba(56,189,248,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.18) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
+                  {/* Corner ticks */}
+                  {(["top-1 left-1", "top-1 right-1", "bottom-1 left-1", "bottom-1 right-1"] as const).map((pos) => (
+                    <span key={pos} className={`pointer-events-none absolute h-2 w-2 border-primary/60 ${pos} ${pos.includes("left") ? "border-l" : "border-r"} ${pos.includes("top") ? "border-t" : "border-b"}`} />
+                  ))}
                 </div>
               ))}
+
+              {/* Power-flow lines: animated dashes flow from strings → inverters → SCADA → Grid */}
               <svg className="pointer-events-none absolute inset-0 h-full w-full">
+                <defs>
+                  <marker id="arrow-online" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("online")} />
+                  </marker>
+                  <marker id="arrow-warning" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("warning")} />
+                  </marker>
+                  <marker id="arrow-fault" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill={statusColor("fault")} />
+                  </marker>
+                </defs>
                 {siteBlueprint.strings.map((string) => {
                   const inverter = siteBlueprint.inverters.find((item) => item.id === string.inverterId);
                   if (!inverter) return null;
                   const runtime = strings.find((item) => item.string.id === string.id);
+                  const lineStatus = runtime?.status ?? "fault";
+                  const color = statusColor(lineStatus);
+                  const animate = lineStatus !== "fault";
                   return (
                     <line
                       key={string.id}
-                      x1={`${string.x + 2}%`}
-                      y1={`${string.y + 2}%`}
-                      x2={`${inverter.x + 2}%`}
-                      y2={`${inverter.y + 2}%`}
-                      stroke={runtime?.color ?? CHART_COLORS.slate}
-                      strokeWidth="2"
-                      strokeDasharray={runtime?.status === "fault" ? "6 5" : "0"}
-                      opacity="0.62"
-                    />
+                      x1={`${string.x + 4}%`}
+                      y1={`${string.y + 3}%`}
+                      x2={`${inverter.x + 3}%`}
+                      y2={`${inverter.y + 3}%`}
+                      stroke={color}
+                      strokeWidth="1.6"
+                      strokeDasharray={lineStatus === "fault" ? "5 5" : "6 4"}
+                      opacity="0.78"
+                      markerEnd={`url(#arrow-${lineStatus})`}
+                    >
+                      {animate && (
+                        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.4s" repeatCount="indefinite" />
+                      )}
+                    </line>
                   );
                 })}
-                <line x1="70%" y1="46%" x2="82%" y2="62%" stroke={CHART_COLORS.blue} strokeWidth="3" opacity="0.5" />
+                {/* Inverter → SCADA bus */}
+                {siteBlueprint.inverters.map((inverter) => {
+                  const status = inverterStatusById.get(inverter.id) ?? "fault";
+                  const color = statusColor(status);
+                  return (
+                    <line
+                      key={`inv-bus-${inverter.id}`}
+                      x1={`${inverter.x + 4}%`}
+                      y1={`${inverter.y + 3}%`}
+                      x2="86%"
+                      y2="26%"
+                      stroke={color}
+                      strokeWidth="1.8"
+                      strokeDasharray="6 4"
+                      opacity="0.6"
+                      markerEnd={`url(#arrow-${status})`}
+                    >
+                      {status !== "fault" && (
+                        <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.6s" repeatCount="indefinite" />
+                      )}
+                    </line>
+                  );
+                })}
+                {/* SCADA → Grid trunk */}
+                <line
+                  x1="86%" y1="28%" x2="86%" y2="62%"
+                  stroke={trunkColor}
+                  strokeWidth="3"
+                  strokeDasharray="8 4"
+                  opacity="0.85"
+                  markerEnd={`url(#arrow-${trunkStatus})`}
+                >
+                  {trunkStatus !== "fault" && (
+                    <animate attributeName="stroke-dashoffset" from="24" to="0" dur="1.2s" repeatCount="indefinite" />
+                  )}
+                </line>
               </svg>
+
+              {/* String panels — shaped like miniature PV modules */}
               {strings.map((item) => (
                 <div
                   key={item.string.id}
-                  className="absolute h-8 w-16 rounded-lg border px-2 py-1 text-[10px] font-semibold transition-transform hover:z-20 hover:scale-110"
-                  title={`${item.string.name}: ${item.statusLabel}`}
+                  className="group absolute h-12 w-24 rounded-md border-2 px-1.5 py-1 text-[10px] font-semibold shadow-sm transition-transform hover:z-20 hover:scale-110"
+                  title={`${item.string.name}: ${item.statusLabel}${item.powerW !== null ? ` • ${item.powerW.toFixed(1)} W` : ""}`}
                   style={{
                     left: `${item.string.x}%`,
                     top: `${item.string.y}%`,
                     borderColor: item.color,
-                    backgroundColor: `${item.color}22`,
+                    backgroundColor: `${item.color}1f`,
                     color: item.color,
+                    boxShadow: item.status === "online" ? `0 0 0 2px ${item.color}22, 0 4px 16px -8px ${item.color}` : undefined,
                   }}
                 >
-                  <div className="truncate">{item.string.name.replace("String ", "")}</div>
-                  <div className="text-[9px] opacity-80">{item.powerW === null ? "No data" : `${item.powerW.toFixed(1)} W`}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="truncate">{item.string.name.replace("String ", "")}</span>
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${item.status === "online" ? "animate-pulse" : ""}`}
+                      style={{ backgroundColor: item.color }}
+                    />
+                  </div>
+                  <div className="mt-0.5 flex items-baseline gap-1 text-[9px] opacity-90">
+                    {item.powerW === null ? (
+                      <span>No data</span>
+                    ) : (
+                      <>
+                        <span className="font-bold">{item.powerW.toFixed(1)}</span>
+                        <span className="opacity-70">W</span>
+                      </>
+                    )}
+                  </div>
+                  {/* Mini PV cells */}
+                  <div className="pointer-events-none absolute inset-x-1 bottom-0.5 flex h-1 gap-px opacity-60">
+                    <span className="flex-1 rounded-sm" style={{ backgroundColor: item.color }} />
+                    <span className="flex-1 rounded-sm" style={{ backgroundColor: item.color }} />
+                    <span className="flex-1 rounded-sm" style={{ backgroundColor: item.color }} />
+                    <span className="flex-1 rounded-sm" style={{ backgroundColor: item.color }} />
+                  </div>
                 </div>
               ))}
+
+              {/* Inverters */}
               {siteBlueprint.inverters.map((inverter) => {
-                const linkedStrings = strings.filter((item) => item.string.inverterId === inverter.id);
-                const inverterStatus: StatusLevel = linkedStrings.some((item) => item.status === "fault")
-                  ? "fault"
-                  : linkedStrings.some((item) => item.status === "warning")
-                    ? "warning"
-                    : "online";
-                const color = statusColor(inverterStatus);
+                const status = inverterStatusById.get(inverter.id) ?? "fault";
+                const color = statusColor(status);
+                const linked = strings.filter((item) => item.string.inverterId === inverter.id);
+                const inverterPowerW = linked.reduce((sum, item) => sum + (item.powerW ?? 0), 0);
                 return (
                   <div
                     key={inverter.id}
-                    className="absolute flex h-14 w-20 flex-col items-center justify-center rounded-xl border bg-card text-center text-[10px] font-bold"
-                    style={{ left: `${inverter.x}%`, top: `${inverter.y}%`, borderColor: color, color }}
+                    className="absolute flex h-16 w-24 flex-col items-center justify-center rounded-xl border-2 bg-card/95 text-center text-[10px] font-bold shadow-md backdrop-blur-sm"
+                    style={{
+                      left: `${inverter.x}%`,
+                      top: `${inverter.y}%`,
+                      borderColor: color,
+                      color,
+                      boxShadow: status === "online" ? `0 0 0 3px ${color}22, 0 6px 18px -10px ${color}` : undefined,
+                    }}
+                    title={`${inverter.name} • ${linked.length} strings • ${inverterPowerW.toFixed(1)} W`}
                   >
-                    <Cpu className="mb-1 h-4 w-4" />
-                    {inverter.name.replace("Inverter ", "INV ")}
+                    <span className={`absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full ${status === "online" ? "animate-pulse" : ""}`} style={{ backgroundColor: color }} />
+                    <Cpu className="mb-0.5 h-4 w-4" />
+                    <span>{inverter.name.replace("Inverter ", "INV ")}</span>
+                    <span className="mt-0.5 text-[9px] font-semibold opacity-80">
+                      {inverterPowerW >= 1000 ? `${(inverterPowerW / 1000).toFixed(1)} kW` : `${inverterPowerW.toFixed(0)} W`}
+                    </span>
                   </div>
                 );
               })}
-              <div className="absolute left-[82%] top-[20%] flex h-16 w-20 flex-col items-center justify-center rounded-xl border border-primary bg-card text-center text-[10px] font-bold text-primary">
-                <Building2 className="mb-1 h-4 w-4" />
-                SCADA
+
+              {/* SCADA / TRB246 room */}
+              <div className="absolute left-[82%] top-[18%] flex h-20 w-24 flex-col items-center justify-center rounded-xl border-2 border-primary bg-card/95 text-center text-[10px] font-bold text-primary shadow-md backdrop-blur-sm">
+                <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                <Building2 className="mb-1 h-5 w-5" />
+                <span>SCADA</span>
+                <span className="text-[9px] font-semibold opacity-80">TRB246</span>
               </div>
-              <div className="absolute left-[82%] top-[62%] flex h-16 w-20 flex-col items-center justify-center rounded-xl border border-blue-500 bg-card text-center text-[10px] font-bold text-blue-500">
-                <Zap className="mb-1 h-4 w-4" />
-                Grid
+
+              {/* Grid export */}
+              <div className="absolute left-[82%] top-[64%] flex h-20 w-24 flex-col items-center justify-center rounded-xl border-2 border-blue-500 bg-card/95 text-center text-[10px] font-bold text-blue-600 shadow-md backdrop-blur-sm">
+                <Zap className="mb-1 h-5 w-5" />
+                <span>Grid Export</span>
+                <span className="text-[9px] font-semibold opacity-80">{livePowerLabel}</span>
+              </div>
+
+              {/* Legend */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-full border bg-background/85 px-3 py-1.5 text-[10px] font-semibold backdrop-blur-sm">
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Online</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" /> Warning</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" /> Fault</span>
               </div>
             </div>
             <div className="space-y-4">
