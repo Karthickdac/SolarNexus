@@ -26,6 +26,7 @@ import {
   Download,
   FileText,
   LayoutDashboard,
+  LogOut,
   Moon,
   Network,
   Printer,
@@ -34,6 +35,7 @@ import {
   Users as UsersIcon,
   Zap,
 } from "lucide-react";
+import { clearSession, getStoredUser } from "@/lib/auth";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   deleteSiteStalenessThreshold,
@@ -1181,6 +1183,22 @@ export default function Dashboard() {
               </Button>
               <Button variant="outline" size="icon" onClick={() => setIsDark((value) => !value)} aria-label="Toggle dark mode">
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  clearSession();
+                  window.location.assign(`${import.meta.env.BASE_URL}login`);
+                }}
+                aria-label="Sign out"
+                title={(() => {
+                  const u = getStoredUser();
+                  return u ? `Signed in as ${u.email} — sign out` : "Sign out";
+                })()}
+                data-testid="button-logout"
+              >
+                <LogOut className="h-4 w-4" />
               </Button>
             </div>
           </header>
