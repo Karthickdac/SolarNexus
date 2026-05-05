@@ -3,8 +3,8 @@ import { siteBlueprint as defaultBlueprint, type SiteBlueprint } from "./site-bl
 
 export type Site = { id: string } & SiteBlueprint;
 
-const SITES_KEY = "plantos.sites.v1";
-const CURRENT_SITE_KEY = "plantos.current-site.v1";
+const SITES_KEY = "plantos.sites.v2";
+const CURRENT_SITE_KEY = "plantos.current-site.v2";
 
 const DEFAULT_SITE: Site = { id: "site-default", ...defaultBlueprint };
 

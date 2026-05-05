@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { siteBlueprint as defaultBlueprint, type SiteBlueprint } from "./site-blueprint";
 
-const STORAGE_KEY = "plantos.site-blueprint.v1";
+const STORAGE_KEY = "plantos.site-blueprint.v2";
 
 function loadBlueprint(): SiteBlueprint {
   if (typeof window === "undefined") return defaultBlueprint;
