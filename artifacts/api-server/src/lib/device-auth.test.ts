@@ -9,9 +9,22 @@ import {
   type AuthResult,
 } from "./device-auth.ts";
 
-const makeReq = (headers: Record<string, string | undefined>) => ({
-  get: (name: string) => headers[name.toLowerCase()],
-});
+// Express's `Request.get` is overloaded so `get("set-cookie")` returns
+// `string[] | undefined` while every other header name returns
+// `string | undefined`. Match that shape so the mock satisfies
+// `Pick<Request, "get">` without `as unknown as` casts.
+const makeReq = (headers: Record<string, string | undefined>) => {
+  function get(name: "set-cookie"): string[] | undefined;
+  function get(name: string): string | undefined;
+  function get(name: string): string | string[] | undefined {
+    const value = headers[name.toLowerCase()];
+    if (name.toLowerCase() === "set-cookie") {
+      return value === undefined ? undefined : [value];
+    }
+    return value;
+  }
+  return { get };
+};
 
 describe("parseTokenList", () => {
   it("returns an empty list when input is undefined or empty", () => {

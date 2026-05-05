@@ -1135,23 +1135,21 @@ export default function Dashboard() {
         </aside>
         <main className="min-w-0 px-4 py-5 md:px-7 lg:px-8">
           <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <Badge className="bg-green-600 text-white">{operationalStrings} live strings</Badge>
-                <Badge className="bg-amber-500 text-white">{activeWarnings} warnings</Badge>
-                <Badge className="bg-red-600 text-white">{activeFaults} faults</Badge>
-                <Badge variant="outline">App DB</Badge>
-                <Badge variant="outline">Teltonika TRB246</Badge>
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">SolarNexus by Automystics</h1>
+            <div className="min-w-0">
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">SolarNexus</h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Blueprint-driven simulation, live string status tracking, and Modbus telemetry reporting.
               </p>
-              <p className={`mt-2 font-mono text-xs ${latestIsStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                Last received: {lastReceivedDisplay}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">{operationalStrings} live</Badge>
+                <Badge className="bg-amber-500 text-white hover:bg-amber-500">{activeWarnings} warning{activeWarnings === 1 ? "" : "s"}</Badge>
+                <Badge className="bg-red-600 text-white hover:bg-red-600">{activeFaults} fault{activeFaults === 1 ? "" : "s"}</Badge>
+              </div>
+              <p className={`mt-3 text-xs ${latestIsStale ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                Last reading {lastReceivedDisplay}
                 {latestIsStale ? ` — exceeds ${stalenessThresholdMinutes} min staleness threshold` : ""}
+                <span className="text-muted-foreground"> · refreshed {lastRefreshed}</span>
               </p>
-              <p className="mt-1 font-mono text-xs text-muted-foreground">Dashboard refresh: {lastRefreshed}</p>
             </div>
             <div className="flex items-center gap-2 print:hidden">
               <SplitRefreshButton
@@ -1273,60 +1271,64 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="staleness-threshold" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Warn when stale after{currentSite ? ` (${siteBlueprint.siteName})` : ""}
-                  </label>
-                  <select
-                    id="staleness-threshold"
-                    className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
-                    value={stalenessThresholdMinutes}
-                    disabled={!currentSite}
-                    onChange={(event) => {
-                      void setStalenessThresholdMinutes(Number(event.target.value));
-                    }}
-                  >
-                    {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
-                      <option key={minutes} value={minutes}>
-                        {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
-                        {minutes === DEFAULT_STALENESS_THRESHOLD ? " (default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-[11px] text-muted-foreground">
-                    Per-site setting, saved on the server. Devices warn when no payload arrives for this long; faulted at 3×.
-                    {siteHasThresholdOverride ? " The override is cleared once both threshold and cooldown are back to their defaults." : ""}
-                  </span>
-                  {thresholdSaveError ? (
-                    <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
-                  ) : null}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label htmlFor="staleness-cooldown" className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                    Resend cooldown{currentSite ? ` (${siteBlueprint.siteName})` : ""}
-                  </label>
-                  <select
-                    id="staleness-cooldown"
-                    className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
-                    value={cooldownMinutesValue}
-                    disabled={!currentSite}
-                    onChange={(event) => {
-                      void setCooldownMinutes(Number(event.target.value));
-                    }}
-                  >
-                    {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
-                      <option key={minutes} value={minutes}>
-                        {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
-                        {minutes === DEFAULT_COOLDOWN_MINUTES ? " (default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-[11px] text-muted-foreground">
-                    Wait at least this long before sending another alert for the same silent device.
-                    {siteHasThresholdOverride
-                      ? " The override is cleared once both threshold and cooldown are back to their defaults."
-                      : ""}
-                  </span>
+                <div className="flex basis-full flex-col gap-2 rounded-lg border bg-muted/30 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      Alert thresholds{currentSite ? ` · ${siteBlueprint.siteName}` : ""}
+                    </span>
+                    {siteHasThresholdOverride ? (
+                      <span className="text-[11px] text-muted-foreground">Custom override active — cleared automatically when both fields return to default.</span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="staleness-threshold" className="text-[11px] font-medium text-muted-foreground">
+                        Warn when stale after
+                      </label>
+                      <select
+                        id="staleness-threshold"
+                        className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
+                        value={stalenessThresholdMinutes}
+                        disabled={!currentSite}
+                        onChange={(event) => {
+                          void setStalenessThresholdMinutes(Number(event.target.value));
+                        }}
+                      >
+                        {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                          <option key={minutes} value={minutes}>
+                            {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                            {minutes === DEFAULT_STALENESS_THRESHOLD ? " (default)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[11px] text-muted-foreground">Faulted at 3× this value.</span>
+                      {thresholdSaveError ? (
+                        <span className="text-[11px] text-destructive">{thresholdSaveError}</span>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="staleness-cooldown" className="text-[11px] font-medium text-muted-foreground">
+                        Resend cooldown
+                      </label>
+                      <select
+                        id="staleness-cooldown"
+                        className="h-9 min-w-[160px] rounded-md border bg-background px-2 text-sm"
+                        value={cooldownMinutesValue}
+                        disabled={!currentSite}
+                        onChange={(event) => {
+                          void setCooldownMinutes(Number(event.target.value));
+                        }}
+                      >
+                        {[5, 15, 30, 60, 120, 240, 1440].map((minutes) => (
+                          <option key={minutes} value={minutes}>
+                            {minutes < 60 ? `${minutes} min` : minutes === 1440 ? "24 hours" : `${minutes / 60} hour${minutes === 60 ? "" : "s"}`}
+                            {minutes === DEFAULT_COOLDOWN_MINUTES ? " (default)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[11px] text-muted-foreground">Minimum wait between repeat alerts for the same device.</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="ml-auto text-xs text-muted-foreground">
                   Showing <span className="font-semibold text-foreground">{parsedData.length}</span> reading{parsedData.length === 1 ? "" : "s"}
