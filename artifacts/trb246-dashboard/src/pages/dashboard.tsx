@@ -1199,6 +1199,7 @@ export default function Dashboard() {
           </header>
 
           <div className="space-y-5">
+            {activeView === "overview" && (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Card className="border-l-4 border-l-emerald-500">
                 <CardContent className="px-4 py-3">
@@ -1233,7 +1234,9 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
+            )}
 
+            {(["overview", "simulation", "analytics", "report"].includes(activeView)) && (
             <Card className="print:hidden">
               <CardContent className="flex flex-wrap items-end gap-4 px-5 py-4">
                 <div className="flex flex-col gap-1">
@@ -1353,7 +1356,9 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
+            {activeView === "alerts" && (
             <Card className="print:hidden">
               <CardContent className="px-5 py-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -1427,6 +1432,7 @@ export default function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            )}
 
             {isError && (
               <Card className="border-destructive/40">
@@ -1497,28 +1503,6 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             )}
-
-            <nav className="flex gap-1 overflow-x-auto rounded-xl border bg-card p-1.5 print:hidden" aria-label="Dashboard sections">
-              {[
-                { id: "overview", label: "Overview" },
-                { id: "simulation", label: "Simulation" },
-                { id: "analytics", label: "Analytics" },
-                { id: "report", label: "Report" },
-                { id: "alerts", label: "Alerts" },
-                { id: "config", label: "Config" },
-              ].map((item) => (
-                <Button
-                  key={item.id}
-                  type="button"
-                  variant={activeView === item.id ? "default" : "ghost"}
-                  className="flex-1 whitespace-nowrap text-sm font-medium"
-                  onClick={() => setActiveView(item.id)}
-                  data-testid={`tab-${item.id}`}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </nav>
 
             {activeView === "overview" && (
             <div className="space-y-5">
