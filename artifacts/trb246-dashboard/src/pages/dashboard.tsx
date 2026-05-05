@@ -1161,6 +1161,21 @@ export default function Dashboard() {
                 setAutoRefreshInterval={setAutoRefreshInterval}
               />
               <AlertsBell onOpen={() => setActiveView("alerts")} />
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                title="Download the Agent_relay Windows desktop client (.zip)"
+              >
+                <a
+                  href={`${import.meta.env.BASE_URL}api/downloads/agent-relay`}
+                  download
+                  data-testid="link-download-agent-relay"
+                >
+                  <Download className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Windows client</span>
+                </a>
+              </Button>
               <Button variant="outline" size="icon" onClick={() => window.print()} aria-label="Export as PDF">
                 <Printer className="h-4 w-4" />
               </Button>
