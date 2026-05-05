@@ -44,6 +44,15 @@ export function saveSession(
   }
 }
 
+export function updateStoredUser(user: AuthUser): void {
+  try {
+    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    window.dispatchEvent(new Event("solarnexus:auth-changed"));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 export function clearSession(): void {
   try {
     window.localStorage.removeItem(TOKEN_KEY);

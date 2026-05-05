@@ -20,7 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { getStoredUser } from "@/lib/auth";
+import { getStoredUser, updateStoredUser } from "@/lib/auth";
+import { useGetAuthenticatedUser } from "@workspace/api-client-react";
 import { Switch } from "@/components/ui/switch";
 import {
   saasApi,
@@ -66,7 +67,18 @@ function roleAtLeast(role: string | undefined, min: string): boolean {
 export default function OrgSettingsPage() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
-  const user = getStoredUser();
+  const meQuery = useGetAuthenticatedUser({
+    query: {
+      queryKey: ["/api/auth/me"],
+      staleTime: 0,
+      refetchOnMount: "always",
+    },
+  });
+  useEffect(() => {
+    const fresh = meQuery.data?.user;
+    if (fresh) updateStoredUser(fresh as unknown as Parameters<typeof updateStoredUser>[0]);
+  }, [meQuery.data]);
+  const user = (meQuery.data?.user as unknown as ReturnType<typeof getStoredUser>) ?? getStoredUser();
   const memberships = (user as unknown as { memberships?: Array<{ orgSlug: string; orgName: string; role: string }> })?.memberships ?? [];
   const currentMembership = memberships[0];
   const slug = currentMembership?.orgSlug ?? "default";
