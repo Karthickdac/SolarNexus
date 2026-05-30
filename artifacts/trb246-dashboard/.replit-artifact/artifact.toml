@@ -12,7 +12,7 @@ version = "1.0.0"
 [[services]]
 name = "web"
 paths = [ "/" ]
-localPort = 19321
+localPort = 3000
 
 [services.development]
 run = "pnpm --filter @workspace/trb246-dashboard run dev"
@@ -27,5 +27,5 @@ from = "/*"
 to = "/index.html"
 
 [services.env]
-PORT = "19321"
+PORT = "3000"
 BASE_PATH = "/"
