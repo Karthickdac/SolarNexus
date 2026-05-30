@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   authenticateDeviceRequest,
+  extractQueryToken,
   getAcceptedTokens,
   parseTokenList,
   ROTATION_WARNING_MESSAGE,
@@ -25,6 +26,36 @@ const makeReq = (headers: Record<string, string | undefined>) => {
   }
   return { get };
 };
+
+// Variant that also carries a parsed query string, as Express populates
+// `req.query`. Header lookups still resolve via the same overloaded `get`.
+const makeReqWithQuery = (
+  headers: Record<string, string | undefined>,
+  query: Record<string, unknown>,
+) => ({ ...makeReq(headers), query });
+
+describe("extractQueryToken", () => {
+  it("returns null when query is undefined or has no recognised key", () => {
+    assert.equal(extractQueryToken(undefined), null);
+    assert.equal(extractQueryToken({}), null);
+    assert.equal(extractQueryToken({ unrelated: "x" }), null);
+  });
+
+  it("reads token, key, and device_key in that precedence", () => {
+    assert.equal(extractQueryToken({ token: "t" }), "t");
+    assert.equal(extractQueryToken({ key: "k" }), "k");
+    assert.equal(extractQueryToken({ device_key: "d" }), "d");
+    assert.equal(extractQueryToken({ token: "t", key: "k" }), "t");
+    assert.equal(extractQueryToken({ key: "k", device_key: "d" }), "k");
+  });
+
+  it("trims whitespace and ignores empty or non-string values", () => {
+    assert.equal(extractQueryToken({ token: "  spaced  " }), "spaced");
+    assert.equal(extractQueryToken({ token: "   " }), null);
+    assert.equal(extractQueryToken({ token: ["a", "b"] }), null);
+    assert.equal(extractQueryToken({ token: 123 }), null);
+  });
+});
 
 describe("parseTokenList", () => {
   it("returns an empty list when input is undefined or empty", () => {
@@ -179,6 +210,45 @@ describe("authenticateDeviceRequest", () => {
         "x-device-key": "current",
         authorization: "Bearer old",
       }),
+      {
+        MODBUS_INGEST_TOKEN: "current",
+        MODBUS_INGEST_TOKEN_PREVIOUS: "old",
+      },
+    );
+    assert.deepEqual(result, { ok: true, slot: "current" });
+  });
+
+  it("accepts the current token via the ?token= query parameter", () => {
+    const result = authenticateDeviceRequest(
+      makeReqWithQuery({}, { token: "current" }),
+      { MODBUS_INGEST_TOKEN: "current" },
+    );
+    assert.deepEqual(result, { ok: true, slot: "current" });
+  });
+
+  it("accepts a rotating previous token via the query parameter", () => {
+    const result = authenticateDeviceRequest(
+      makeReqWithQuery({}, { device_key: "old1" }),
+      {
+        MODBUS_INGEST_TOKEN: "current",
+        MODBUS_INGEST_TOKEN_PREVIOUS: "old1, old2",
+      },
+    );
+    assert.deepEqual(result, { ok: true, slot: "previous" });
+  });
+
+  it("rejects a wrong token supplied via the query parameter", () => {
+    const result = authenticateDeviceRequest(
+      makeReqWithQuery({}, { token: "guess" }),
+      { MODBUS_INGEST_TOKEN: "current" },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.ok ? null : result.status, 401);
+  });
+
+  it("prefers headers over the query parameter when both are present", () => {
+    const result = authenticateDeviceRequest(
+      makeReqWithQuery({ "x-device-key": "current" }, { token: "old" }),
       {
         MODBUS_INGEST_TOKEN: "current",
         MODBUS_INGEST_TOKEN_PREVIOUS: "old",

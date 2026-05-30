@@ -1,0 +1,1 @@
+- [TRB246 Modbus ingest quirks](trb246-ingest.md) — device can't send custom headers (use query-param token); payloads lack register IDs so decoder can't map metrics yet.
