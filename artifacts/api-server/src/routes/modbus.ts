@@ -10,6 +10,7 @@ import {
 import { decodeModbusPayload } from "../modbus-decoder";
 import {
   authenticateDeviceRequest,
+  extractQueryToken,
   warnIfPreviousTokenSlot,
 } from "../lib/device-auth";
 import {
@@ -73,7 +74,9 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
   // MODBUS_INGEST_TOKEN(s) for in-flight devices.
   const provided =
     req.get("x-device-key")?.trim() ||
-    (req.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    (req.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim() ||
+    extractQueryToken(req.query) ||
+    "";
 
   let resolvedOrgId: number | null = null;
   let resolvedKeyId: number | null = null;

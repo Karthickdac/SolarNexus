@@ -87,8 +87,19 @@ export const warnIfPreviousTokenSlot = (
   return true;
 };
 
+export const extractQueryToken = (
+  query: Request["query"] | undefined,
+): string | null => {
+  if (!query) return null;
+  for (const key of ["token", "key", "device_key"]) {
+    const raw = (query as Record<string, unknown>)[key];
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+  }
+  return null;
+};
+
 export const authenticateDeviceRequest = (
-  req: Pick<Request, "get">,
+  req: Pick<Request, "get"> & { query?: Request["query"] },
   env: NodeJS.ProcessEnv = process.env,
 ): AuthResult => {
   const acceptedTokens = getAcceptedTokens(env);
@@ -103,7 +114,8 @@ export const authenticateDeviceRequest = (
 
   const providedToken =
     req.get("x-device-key")?.trim() ||
-    extractBearerToken(req.get("authorization") ?? undefined);
+    extractBearerToken(req.get("authorization") ?? undefined) ||
+    extractQueryToken(req.query);
 
   if (!providedToken) {
     return {
