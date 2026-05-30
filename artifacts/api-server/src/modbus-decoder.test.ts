@@ -3,12 +3,13 @@ import { describe, it } from "node:test";
 import { decodeModbusPayload } from "./modbus-decoder.ts";
 
 describe("decodeModbusPayload", () => {
-  it("decodes configured numeric and boolean registers", () => {
+  it("decodes the solar register map with scales", () => {
     const decoded = decodeModbusPayload({
       registers: {
-        "1": 235,
-        "2": "1200",
-        "4": 1,
+        "5019": "[7942]",
+        "5022": "[1232]",
+        "5035": 999,
+        "5036": 498,
       },
     });
 
@@ -17,37 +18,60 @@ describe("decodeModbusPayload", () => {
       decoded.registers.map((register) => ({
         address: register.address,
         name: register.name,
-        value: register.value,
-        displayValue: register.displayValue,
+        unit: register.unit,
+        value: Number(register.value?.toFixed?.(4) ?? register.value),
       })),
       [
-        {
-          address: "1",
-          name: "temperature",
-          value: 23.5,
-          displayValue: undefined,
-        },
-        {
-          address: "2",
-          name: "flow",
-          value: 12,
-          displayValue: undefined,
-        },
-        {
-          address: "4",
-          name: "relay_state",
-          value: true,
-          displayValue: "on",
-        },
+        { address: "5019", name: "voltage_a", unit: "V", value: 794.2 },
+        { address: "5022", name: "current_a", unit: "A", value: 123.2 },
+        { address: "5035", name: "power_factor", unit: null, value: 0.999 },
+        { address: "5036", name: "frequency", unit: "Hz", value: 49.8 },
       ],
     );
+  });
+
+  it("combines comma-separated 32-bit registers in low/high word order", () => {
+    const decoded = decodeModbusPayload({
+      registers: {
+        "5031": "44259,2",
+      },
+    });
+
+    assert.equal(decoded.status, "decoded");
+    assert.equal(decoded.registers[0]?.name, "power");
+    assert.equal(decoded.registers[0]?.unit, "W");
+    // low=44259, high=2 -> 2 * 65536 + 44259 = 175331
+    assert.equal(decoded.registers[0]?.value, 175331);
+  });
+
+  it("treats the all-0xFFFF sentinel as an unavailable value", () => {
+    const decoded = decodeModbusPayload(
+      {
+        registers: {
+          "5083": "65535,65535",
+        },
+      },
+      {
+        "5083": {
+          name: "meter_power",
+          unit: "W",
+          kind: "number",
+          words: 2,
+          wordOrder: "lohi",
+        },
+      },
+    );
+
+    assert.equal(decoded.status, "contains_invalid_registers");
+    assert.equal(decoded.registers[0]?.status, "invalid");
+    assert.match(decoded.registers[0]?.error ?? "", /unavailable/);
   });
 
   it("marks unknown and invalid registers explicitly", () => {
     const decoded = decodeModbusPayload({
       registers: {
         "999": "mystery",
-        "40003": "bad-number",
+        "5019": "bad-number",
       },
     });
 
@@ -56,7 +80,7 @@ describe("decodeModbusPayload", () => {
     assert.equal(decoded.registers[0]?.name, "register_999");
     assert.match(decoded.registers[0]?.error ?? "", /No register mapping/);
     assert.equal(decoded.registers[1]?.status, "invalid");
-    assert.equal(decoded.registers[1]?.name, "voltage");
+    assert.equal(decoded.registers[1]?.name, "voltage_a");
     assert.match(decoded.registers[1]?.error ?? "", /numeric/);
   });
 
@@ -64,7 +88,7 @@ describe("decodeModbusPayload", () => {
     const decoded = decodeModbusPayload({
       payload: {
         registers: {
-          "40001": "210",
+          "5036": "498",
         },
         values: {
           upstreamName: "already decoded",
@@ -73,8 +97,8 @@ describe("decodeModbusPayload", () => {
     });
 
     assert.equal(decoded.status, "decoded");
-    assert.equal(decoded.registers[0]?.name, "temperature");
-    assert.equal(decoded.registers[0]?.value, 21);
+    assert.equal(decoded.registers[0]?.name, "frequency");
+    assert.equal(Number(decoded.registers[0]?.value?.toFixed(4)), 49.8);
     assert.deepEqual(decoded.providedValues, {
       upstreamName: "already decoded",
     });

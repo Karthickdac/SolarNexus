@@ -5,40 +5,41 @@ type RegisterDefinition = {
   unit: string | null;
   kind: "number" | "boolean";
   scale?: number;
+  /** Number of 16-bit Modbus words this value spans (1 = 16-bit, 2 = 32-bit). */
+  words?: number;
+  /** Word order when combining a 32-bit value: "lohi" (default) or "hilo". */
+  wordOrder?: "lohi" | "hilo";
   labels?: Record<string, string>;
 };
 
+// Register map for the SolarNexus TRB246 three-phase inverter/meter.
+// Keyed by Modbus register address. Scales were calibrated against the
+// captured device data and cross-checked against three-phase power
+// (P ≈ √3 · V · I · PF), so they can be tuned via TRB246_REGISTER_MAP_JSON
+// if the inverter's own display disagrees.
 export const DEFAULT_TRB246_REGISTER_MAP: Record<string, RegisterDefinition> = {
-  "1": { name: "temperature", unit: "°C", kind: "number", scale: 0.1 },
-  "2": { name: "flow", unit: "L/min", kind: "number", scale: 0.01 },
-  "3": { name: "voltage", unit: "V", kind: "number", scale: 0.001 },
-  "4": {
-    name: "relay_state",
-    unit: null,
-    kind: "boolean",
-    labels: { false: "off", true: "on" },
+  "5019": { name: "voltage_a", unit: "V", kind: "number", scale: 0.1 },
+  "5020": { name: "voltage_b", unit: "V", kind: "number", scale: 0.1 },
+  "5021": { name: "voltage_c", unit: "V", kind: "number", scale: 0.1 },
+  "5022": { name: "current_a", unit: "A", kind: "number", scale: 0.1 },
+  "5023": { name: "current_b", unit: "A", kind: "number", scale: 0.1 },
+  "5024": { name: "current_c", unit: "A", kind: "number", scale: 0.1 },
+  "5031": {
+    name: "power",
+    unit: "W",
+    kind: "number",
+    words: 2,
+    wordOrder: "lohi",
   },
-  "5": {
-    name: "alarm_state",
-    unit: null,
-    kind: "boolean",
-    labels: { false: "normal", true: "alarm" },
+  "5033": {
+    name: "reactive_power",
+    unit: "var",
+    kind: "number",
+    words: 2,
+    wordOrder: "lohi",
   },
-  "40001": { name: "temperature", unit: "°C", kind: "number", scale: 0.1 },
-  "40002": { name: "flow", unit: "L/min", kind: "number", scale: 0.01 },
-  "40003": { name: "voltage", unit: "V", kind: "number", scale: 0.001 },
-  "40004": {
-    name: "relay_state",
-    unit: null,
-    kind: "boolean",
-    labels: { false: "off", true: "on" },
-  },
-  "40005": {
-    name: "alarm_state",
-    unit: null,
-    kind: "boolean",
-    labels: { false: "normal", true: "alarm" },
-  },
+  "5035": { name: "power_factor", unit: null, kind: "number", scale: 0.001 },
+  "5036": { name: "frequency", unit: "Hz", kind: "number", scale: 0.1 },
 };
 
 const parseRegisterDefinition = (
@@ -49,7 +50,7 @@ const parseRegisterDefinition = (
     throw new Error(`TRB246 register "${address}" must be an object.`);
   }
 
-  const { name, unit, kind, scale, labels } = definition;
+  const { name, unit, kind, scale, words, wordOrder, labels } = definition;
 
   if (typeof name !== "string" || name.trim() === "") {
     throw new Error(`TRB246 register "${address}" must include a name.`);
@@ -65,6 +66,17 @@ const parseRegisterDefinition = (
 
   if (scale !== undefined && (typeof scale !== "number" || !Number.isFinite(scale))) {
     throw new Error(`TRB246 register "${address}" scale must be a finite number.`);
+  }
+
+  if (
+    words !== undefined &&
+    (typeof words !== "number" || !Number.isInteger(words) || words < 1 || words > 2)
+  ) {
+    throw new Error(`TRB246 register "${address}" words must be 1 or 2.`);
+  }
+
+  if (wordOrder !== undefined && wordOrder !== "lohi" && wordOrder !== "hilo") {
+    throw new Error(`TRB246 register "${address}" wordOrder must be "lohi" or "hilo".`);
   }
 
   if (labels !== undefined && !isRecord(labels)) {
@@ -91,6 +103,8 @@ const parseRegisterDefinition = (
     unit,
     kind,
     ...(scale === undefined ? {} : { scale }),
+    ...(words === undefined ? {} : { words }),
+    ...(wordOrder === undefined ? {} : { wordOrder }),
     ...(parsedLabels === undefined ? {} : { labels: parsedLabels }),
   };
 };
@@ -159,6 +173,63 @@ const parseNumber = (rawValue: unknown) => {
   }
 
   return null;
+};
+
+/**
+ * The TRB246 emits raw register values as scalars (`498`), bracketed
+ * single registers (`[1266]`), or comma-separated word lists for
+ * multi-register reads (`44259,2`). Normalise any of these into an array
+ * of 16-bit word numbers, or null when nothing parses.
+ */
+const parseRegisterWords = (rawValue: unknown): number[] | null => {
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+    return [rawValue];
+  }
+
+  if (Array.isArray(rawValue)) {
+    const words = rawValue.map(parseNumber);
+    return words.every((word): word is number => word != null) && words.length > 0
+      ? words
+      : null;
+  }
+
+  if (typeof rawValue === "string") {
+    const stripped = rawValue.trim().replace(/^\[/, "").replace(/\]$/, "");
+    if (stripped === "") return null;
+    const words = stripped.split(",").map((part) => parseNumber(part.trim()));
+    return words.every((word): word is number => word != null) && words.length > 0
+      ? words
+      : null;
+  }
+
+  return null;
+};
+
+const UINT16_SENTINEL = 0xffff;
+
+/**
+ * Combine raw words into a single number using the register's width and
+ * word order. Returns null when the value is the all-0xFFFF "unavailable"
+ * sentinel the device sends for registers it could not read.
+ */
+const combineWords = (
+  words: number[],
+  definition: RegisterDefinition,
+): number | null => {
+  const width = definition.words ?? 1;
+
+  if (words.every((word) => word === UINT16_SENTINEL)) {
+    return null;
+  }
+
+  if (width === 2 && words.length >= 2) {
+    const [first = 0, second = 0] = words;
+    const [low, high] =
+      definition.wordOrder === "hilo" ? [second, first] : [first, second];
+    return high * 0x10000 + low;
+  }
+
+  return words[0] ?? null;
 };
 
 const parseBoolean = (rawValue: unknown) => {
@@ -252,9 +323,9 @@ export const decodeModbusPayload = (
       };
     }
 
-    const numericValue = parseNumber(rawValue);
+    const words = parseRegisterWords(rawValue);
 
-    if (numericValue == null) {
+    if (words == null) {
       return {
         address,
         name: definition.name,
@@ -266,12 +337,26 @@ export const decodeModbusPayload = (
       };
     }
 
+    const combined = combineWords(words, definition);
+
+    if (combined == null) {
+      return {
+        address,
+        name: definition.name,
+        unit: definition.unit,
+        status: "invalid" as const,
+        value: null,
+        rawValue,
+        error: "Register reported an unavailable (0xFFFF) value.",
+      };
+    }
+
     return {
       address,
       name: definition.name,
       unit: definition.unit,
       status: "decoded" as const,
-      value: numericValue * (definition.scale ?? 1),
+      value: combined * (definition.scale ?? 1),
       rawValue,
     };
   });

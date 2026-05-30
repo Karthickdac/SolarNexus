@@ -139,11 +139,21 @@ router.post("/modbus/readings", async (req, res): Promise<void> => {
     return;
   }
 
+  // The TRB246 streams one register per POST as {"ssss":[{"data":"..."}]}.
+  // A single fragment can't be decoded on its own (the register address is
+  // implied by poll order), so route these raw fragments to a dedicated
+  // "trb246-raw" device. The backfill script consolidates them into decoded
+  // snapshots under "trb246" so the main dashboard stays clean.
+  const isRawFragment =
+    "ssss" in rawPayload &&
+    !("registers" in rawPayload) &&
+    !("values" in rawPayload);
+
   const deviceId =
     parsedBody.data.deviceId?.trim() ||
     (typeof rawPayload["device"] === "string" && rawPayload["device"].trim()) ||
     (typeof rawPayload["imei"] === "string" && rawPayload["imei"].trim()) ||
-    "trb246";
+    (isRawFragment ? "trb246-raw" : "trb246");
   const decodedValues = decodeModbusPayload(rawPayload);
 
   const ingestOrgId =
