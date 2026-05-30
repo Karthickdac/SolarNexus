@@ -1,1 +1,2 @@
 - [TRB246 Modbus ingest quirks](trb246-ingest.md) — device can't send custom headers (use query-param token); payloads lack register IDs so decoder can't map metrics yet.
+- [trb246-dashboard build/typecheck quirks](dashboard-build-quirks.md) — TS6305 typecheck errors are inert infra noise (validate via Vite build); Vite build needs PORT + BASE_PATH env vars.

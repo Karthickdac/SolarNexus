@@ -48,8 +48,8 @@ export default function LoginPage() {
               SolarNexus
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Blueprint-driven simulation, live string status tracking,
-              and Modbus telemetry.
+              Real-time Modbus telemetry and analytics for your TRB246
+              gateway.
             </p>
           </div>
         </div>
@@ -133,11 +133,6 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          Need a Windows desktop client? Sign in first, then click the
-          <span className="font-medium"> Windows client </span> button in
-          the dashboard header.
-        </p>
       </div>
     </div>
   );
