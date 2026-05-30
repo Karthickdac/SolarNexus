@@ -81,7 +81,7 @@ export const HealthCheckResponse = zod.object({
  * @summary List recent Modbus readings
  */
 export const listModbusReadingsQueryLimitDefault = 25;
-export const listModbusReadingsQueryLimitMax = 100;
+export const listModbusReadingsQueryLimitMax = 200;
 
 export const ListModbusReadingsQueryParams = zod.object({
   limit: zod.coerce

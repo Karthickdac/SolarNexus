@@ -10,7 +10,7 @@ import type { ListModbusReadingsTokenSlot } from "./listModbusReadingsTokenSlot"
 export type ListModbusReadingsParams = {
   /**
    * @minimum 1
-   * @maximum 100
+   * @maximum 200
    */
   limit?: number;
   /**
