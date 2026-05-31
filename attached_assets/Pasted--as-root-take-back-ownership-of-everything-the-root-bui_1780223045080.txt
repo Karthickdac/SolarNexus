@@ -1,0 +1,49 @@
+
+# as root, take back ownership of everything the root build created:
+chown -R automystics-solarnexus:automystics-solarnexus \
+  /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app
+
+# become the site user again and rebuild:
+sudo -iu automystics-solarnexus
+cd ~/htdocs/solarnexus.automystics.tech/app
+set -a; . ./.env; set +a
+
+pnpm --filter @workspace/api-server run build
+PORT=8080 BASE_PATH=/ pnpm --filter @workspace/trb246-dashboard run build
+
+ls -la artifacts/trb246-dashboard/dist/public   # timestamps should be TODAY now
+pm2 restart solarnexus-api --update-env
+logout
+-bash: cd: /root/htdocs/solarnexus.automystics.tech/app: No such file or directory
+fatal: not a git repository (or any of the parent directories): .git
+ ERR_PNPM_NO_PKG_MANIFEST  No package.json found in /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech
+-bash: ./.env: No such file or directory
+ ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND  No package.json (or package.yaml, or package.json5) was found in "/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech".
+
+> @workspace/db@0.0.0 push /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/lib/db
+> drizzle-kit push --config ./drizzle.config.ts
+
+Reading config file '/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/lib/db/drizzle.config.ts'
+DATABASE_URL, ensure the database is provisioned
+/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/lib/db:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/db@0.0.0 push: `drizzle-kit push --config ./drizzle.config.ts`
+Exit status 1
+[PM2] Starting /usr/bin/bash in fork_mode (1 instance)
+[PM2] Done.
+┌────┬───────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                  │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼───────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ automystics-api       │ default     │ 0.0.0   │ fork    │ 3855432  │ 7D     │ 14   │ online    │ 0%       │ 120.1mb  │ root     │ disabled │
+│ 0  │ fitro360              │ default     │ 1.0.0   │ fork    │ 3855400  │ 7D     │ 14   │ online    │ 0%       │ 115.2mb  │ root     │ disabled │
+│ 1  │ kalvicore-api         │ default     │ 0.0.0   │ fork    │ 3855401  │ 7D     │ 14   │ online    │ 0%       │ 108.8mb  │ root     │ disabled │
+│ 20 │ mystics-api           │ default     │ N/A     │ fork    │ 490576   │ 6D     │ 0    │ online    │ 0%       │ 90.2mb   │ root     │ disabled │
+│ 21 │ mystics-api           │ default     │ N/A     │ fork    │ 1156009  │ 0s     │ 321… │ online    │ 0%       │ 98.7mb   │ root     │ disabled │
+│ 18 │ mysticscivil-api      │ default     │ N/A     │ fork    │ 295517   │ 7D     │ 0    │ online    │ 0%       │ 252.0mb  │ root     │ disabled │
+│ 11 │ mysticshr-api         │ default     │ 0.0.0   │ fork    │ 3855498  │ 7D     │ 1178 │ online    │ 0%       │ 275.2mb  │ root     │ disabled │
+│ 4  │ people-connect-api    │ default     │ 0.0.0   │ fork    │ 3855434  │ 7D     │ 15   │ online    │ 0%       │ 200.0mb  │ root     │ disabled │
+│ 22 │ solarnexus-api        │ default     │ N/A     │ fork    │ 1156082  │ 0s     │ 0    │ online    │ 0%       │ 640.0kb  │ root     │ disabled │
+│ 6  │ tkprabhu-api          │ default     │ 0.0.0   │ fork    │ 3855472  │ 7D     │ 37   │ online    │ 0%       │ 199.3mb  │ root     │ disabled │
+└────┴───────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+root@srv1609330:/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech# 
