@@ -9,6 +9,12 @@ import { sendTestMail } from "../lib/mailer";
 import { recordAuditEvent } from "../lib/org-service";
 import { logger } from "../lib/logger";
 import { resolveAndValidateWebhookHost } from "../lib/webhook-guard";
+import {
+  getDefaultRegisterMap,
+  getRegisterMapView,
+  resetRegisterMap,
+  saveRegisterMap,
+} from "../lib/register-map-service";
 
 const router: IRouter = Router();
 
@@ -159,6 +165,55 @@ router.post(
       return;
     }
     res.json({ ok: true });
+  },
+);
+
+router.get("/admin/decoder-map", requireUserSession, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  const view = await getRegisterMapView();
+  res.json({ ...view, defaultRegisterMap: getDefaultRegisterMap() });
+});
+
+router.put("/admin/decoder-map", requireUserSession, async (req, res) => {
+  if (!requireSuperAdmin(req, res)) return;
+  const registerMap = (req.body as { registerMap?: unknown })?.registerMap;
+  try {
+    const view = await saveRegisterMap(registerMap, req.authenticatedUser!.id);
+    void recordAuditEvent({
+      orgId: null,
+      actorUserId: req.authenticatedUser!.id,
+      action: "admin.decoder_map_updated",
+      targetType: "decoder_settings",
+      targetId: "1",
+      metadata: { registers: Object.keys(view.registerMap).length },
+    }).catch((err) =>
+      logger.warn({ err }, "audit log failed for decoder_map_updated"),
+    );
+    res.json({ ...view, defaultRegisterMap: getDefaultRegisterMap() });
+  } catch (err) {
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Invalid register map.",
+    });
+  }
+});
+
+router.post(
+  "/admin/decoder-map/reset",
+  requireUserSession,
+  async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const view = await resetRegisterMap();
+    void recordAuditEvent({
+      orgId: null,
+      actorUserId: req.authenticatedUser!.id,
+      action: "admin.decoder_map_reset",
+      targetType: "decoder_settings",
+      targetId: "1",
+      metadata: {},
+    }).catch((err) =>
+      logger.warn({ err }, "audit log failed for decoder_map_reset"),
+    );
+    res.json({ ...view, defaultRegisterMap: getDefaultRegisterMap() });
   },
 );
 

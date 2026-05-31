@@ -44,12 +44,15 @@ import {
   Gauge,
   Send,
   Server,
+  Radio,
 } from "lucide-react";
+import { DeviceConnectionPanel } from "@/components/device-connection-panel";
 
 const TAB_KEYS = [
   "members",
   "invites",
   "api-keys",
+  "device",
   "audit",
   "usage",
   "smtp",
@@ -116,7 +119,7 @@ export default function OrgSettingsPage() {
 
       <Tabs value={tab} onValueChange={(v) => navigate(`/settings/${v}`)}>
         <TabsList
-          className={`grid w-full ${isSuperAdmin ? "grid-cols-6" : "grid-cols-5"}`}
+          className={`grid w-full ${isSuperAdmin ? "grid-cols-7" : "grid-cols-6"}`}
         >
           <TabsTrigger value="members">
             <Users className="mr-2 h-4 w-4" /> Members
@@ -126,6 +129,9 @@ export default function OrgSettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="api-keys" disabled={!roleAtLeast(role, "admin")}>
             <KeyRound className="mr-2 h-4 w-4" /> API keys
+          </TabsTrigger>
+          <TabsTrigger value="device" disabled={!roleAtLeast(role, "admin")}>
+            <Radio className="mr-2 h-4 w-4" /> Device
           </TabsTrigger>
           <TabsTrigger value="audit" disabled={!roleAtLeast(role, "admin")}>
             <ScrollText className="mr-2 h-4 w-4" /> Audit log
@@ -148,6 +154,13 @@ export default function OrgSettingsPage() {
         </TabsContent>
         <TabsContent value="api-keys" className="mt-4">
           <ApiKeysPanel slug={slug} toast={toast} />
+        </TabsContent>
+        <TabsContent value="device" className="mt-4">
+          <DeviceConnectionPanel
+            slug={slug}
+            isSuperAdmin={isSuperAdmin}
+            toast={toast}
+          />
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
           <AuditPanel slug={slug} toast={toast} />

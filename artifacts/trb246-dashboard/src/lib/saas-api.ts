@@ -125,6 +125,12 @@ export const saasApi = {
     request<SmtpSettings>("PUT", `/admin/smtp-settings`, input),
   testSmtpSettings: (to: string) =>
     request<{ ok: true }>("POST", `/admin/smtp-settings/test`, { to }),
+
+  getDecoderMap: () => request<DecoderMapView>("GET", `/admin/decoder-map`),
+  saveDecoderMap: (registerMap: RegisterMap) =>
+    request<DecoderMapView>("PUT", `/admin/decoder-map`, { registerMap }),
+  resetDecoderMap: () =>
+    request<DecoderMapView>("POST", `/admin/decoder-map/reset`),
 };
 
 export type SmtpSettings = {
@@ -136,6 +142,24 @@ export type SmtpSettings = {
   appBaseUrl: string | null;
   passwordSet: boolean;
   updatedAt: string | null;
+};
+
+export type RegisterDefinition = {
+  name: string;
+  unit: string | null;
+  kind: "number" | "boolean";
+  scale?: number;
+  words?: number;
+  wordOrder?: "lohi" | "hilo";
+  labels?: Record<string, string>;
+};
+export type RegisterMap = Record<string, RegisterDefinition>;
+export type DecoderMapView = {
+  registerMap: RegisterMap;
+  defaultRegisterMap: RegisterMap;
+  isCustom: boolean;
+  updatedAt: string | null;
+  updatedBy: number | null;
 };
 
 export type SmtpSettingsInput = {

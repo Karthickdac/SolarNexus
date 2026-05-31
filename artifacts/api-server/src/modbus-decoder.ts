@@ -1,6 +1,6 @@
 import type { ModbusDecodedValues } from "@workspace/db";
 
-type RegisterDefinition = {
+export type RegisterDefinition = {
   name: string;
   unit: string | null;
   kind: "number" | "boolean";
@@ -133,6 +133,53 @@ export const getTrb246RegisterMap = () => {
   };
 };
 
+/**
+ * Validate a complete register map object (every address → definition).
+ * Used by the dashboard-driven editor before persisting the override.
+ * Throws on the first invalid entry; the message is safe to surface.
+ */
+export const parseRegisterMap = (
+  raw: unknown,
+): Record<string, RegisterDefinition> => {
+  if (!isRecord(raw)) {
+    throw new Error("Register map must be a JSON object keyed by address.");
+  }
+
+  const entries = Object.entries(raw);
+  if (entries.length === 0) {
+    throw new Error("Register map must contain at least one register.");
+  }
+
+  return Object.fromEntries(
+    entries.map(([address, definition]) => {
+      if (!/^\d+$/.test(address.trim())) {
+        throw new Error(
+          `Register address "${address}" must be a numeric Modbus address.`,
+        );
+      }
+      return [address.trim(), parseRegisterDefinition(address, definition)];
+    }),
+  );
+};
+
+/**
+ * Runtime override for the active register map, populated from the DB on
+ * startup and refreshed whenever an admin edits the map. `decodeModbusPayload`
+ * runs on the ingest hot path, so we cache the validated map in memory rather
+ * than reading the DB per request. `null` means "fall back to the env/default
+ * map" (see {@link getActiveRegisterMap}).
+ */
+let activeMapOverride: Record<string, RegisterDefinition> | null = null;
+
+export const setRegisterMapOverride = (
+  map: Record<string, RegisterDefinition> | null,
+): void => {
+  activeMapOverride = map;
+};
+
+export const getActiveRegisterMap = (): Record<string, RegisterDefinition> =>
+  activeMapOverride ?? getTrb246RegisterMap();
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value != null && typeof value === "object" && !Array.isArray(value);
 
@@ -263,7 +310,7 @@ const parseBoolean = (rawValue: unknown) => {
 
 export const decodeModbusPayload = (
   payload: Record<string, unknown>,
-  registerMap = getTrb246RegisterMap(),
+  registerMap = getActiveRegisterMap(),
 ): ModbusDecodedValues => {
   const registers = getRegisters(payload);
   const providedValues = getProvidedValues(payload);

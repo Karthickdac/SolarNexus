@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startStalenessMonitor } from "./lib/alerts-service";
 import { seedDefaultAdmin } from "./lib/auth-service";
+import { loadRegisterMapOverride } from "./lib/register-map-service";
 
 const rawPort = process.env["PORT"];
 const isLocalRuntime =
@@ -56,5 +57,8 @@ app.listen(port, (err) => {
   startStalenessMonitor();
   seedDefaultAdmin().catch((err) => {
     logger.warn({ err }, "Default admin seed failed");
+  });
+  loadRegisterMapOverride().catch((err) => {
+    logger.warn({ err }, "Register map override load failed");
   });
 });

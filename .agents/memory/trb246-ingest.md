@@ -38,3 +38,21 @@ comma pairs (`65535,65535` = 0xFFFF unread; `43948,2` = 32-bit lo,hi).
 (e.g. `voltage`, `frequency`) so the JSON key identifies the register. Mapping
 by position is fragile (POSTs can drop/reorder). Needs user's register list +
 what each represents before wiring the decoder.
+
+## Editable decode map: global singleton + in-memory cache
+The register→metric map is now editable from the dashboard (Device tab,
+super-admin only) and persisted in the `decoder_settings` singleton row.
+
+**Decision:** the override is GLOBAL (not org-scoped) — one effective map for
+all ingest — and cached in a module variable in `modbus-decoder.ts`
+(`getActiveRegisterMap`/`setRegisterMapOverride`). `decodeModbusPayload` stays
+synchronous; DB I/O only happens at startup (`loadRegisterMapOverride`) and on
+admin save/reset.
+**Why:** decode runs on the ingest hot path (one decode per POST); awaiting the
+DB per request would be wrong, and org-scoping is meaningless until the device
+even sends register IDs (see open payload problem above).
+**How to apply:** precedence is DB override (a complete validated map) > env
+`TRB246_REGISTER_MAP_JSON` (merged onto default) > built-in default. On bad
+persisted JSON the loader logs and falls back to null (env/default) so a corrupt
+row can never take ingest down. Saving stores the FULL effective map; "reset"
+deletes the row.
