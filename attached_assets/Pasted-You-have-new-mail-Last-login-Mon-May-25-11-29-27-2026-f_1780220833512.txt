@@ -1,0 +1,51 @@
+You have new mail.
+Last login: Mon May 25 11:29:27 2026 from 169.254.0.1
+root@srv1609330:~# cd /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech
+root@srv1609330:/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech# cd ~/htdocs/solarnexus.automystics.tech/app
+git pull
+pnpm install
+pnpm --filter @workspace/api-server run build
+pnpm --filter @workspace/trb246-dashboard run build
+pm2 restart solarnexus-api
+-bash: cd: /root/htdocs/solarnexus.automystics.tech/app: No such file or directory
+fatal: not a git repository (or any of the parent directories): .git
+ ERR_PNPM_NO_PKG_MANIFEST  No package.json found in /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech
+
+> @workspace/api-server@0.0.0 build /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/api-server
+> node ./build.mjs
+
+
+  dist/index.mjs                       3.2mb ⚠️
+  dist/pino-worker.mjs               153.5kb
+  dist/pino-file.mjs                 142.1kb
+  dist/pino-pretty.mjs               114.6kb
+  dist/thread-stream-worker.mjs        7.3kb
+  dist/index.mjs.map                   5.6mb
+  dist/pino-worker.mjs.map           256.9kb
+  dist/pino-file.mjs.map             229.1kb
+  dist/pino-pretty.mjs.map           203.9kb
+  dist/thread-stream-worker.mjs.map   12.0kb
+
+⚡ Done in 800ms
+
+> @workspace/trb246-dashboard@0.0.0 build /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/trb246-dashboard
+> vite build --config vite.config.ts
+
+failed to load config from /home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/trb246-dashboard/vite.config.ts
+error during build:
+Error: PORT environment variable is required but was not provided.
+    at file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/trb246-dashboard/node_modules/.vite-temp/vite.config.ts.timestamp-1780220814249-38c4a28da88e.mjs:10:9
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async loadConfigFromBundledFile (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35920:12)
+    at async bundleAndLoadConfigFile (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35808:17)
+    at async loadConfigFromFile (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35775:42)
+    at async resolveConfig (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:35424:22)
+    at async createBuilder (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/chunks/config.js:33879:19)
+    at async CAC.<anonymous> (file:///home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/node_modules/.pnpm/vite@7.3.2_@types+node@25.3.5_jiti@2.6.1_lightningcss@1.31.1_tsx@4.21.0_yaml@2.8.2/node_modules/vite/dist/node/cli.js:629:10)
+/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech/app/artifacts/trb246-dashboard:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/trb246-dashboard@0.0.0 build: `vite build --config vite.config.ts`
+Exit status 1
+Use --update-env to update environment variables
+[PM2][ERROR] Process or Namespace solarnexus-api not found
+root@srv1609330:/home/automystics-solarnexus/htdocs/solarnexus.automystics.tech# 
