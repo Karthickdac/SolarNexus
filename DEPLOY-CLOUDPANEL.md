@@ -114,11 +114,11 @@ cd ~/htdocs/YOUR_DOMAIN.com/app
 # Build the dashboard's static bundle (output in artifacts/trb246-dashboard/dist)
 PORT=3000 BASE_PATH=/ pnpm --filter @workspace/trb246-dashboard run build
 
-# Start the API server under pm2 (loads .env automatically with --update-env)
-pm2 start "pnpm --filter @workspace/api-server run start" \
-  --name solarnexus-api \
-  --update-env \
-  --time
+# Start the API server under pm2 via the ecosystem file. It reads the repo-root
+# .env itself and injects DATABASE_URL/MODBUS_INGEST_TOKEN/ADMIN_API_TOKEN/etc
+# into the process — so you do NOT need to source .env first, and you do NOT
+# rely on --update-env (which only refreshes from the current shell, never a file).
+pm2 start ecosystem.config.cjs
 
 pm2 save
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u $USER --hp $HOME
@@ -207,7 +207,8 @@ pnpm run build
 PORT=3000 BASE_PATH=/ pnpm --filter @workspace/trb246-dashboard run build
 set -a; . ./.env; set +a
 pnpm --filter @workspace/db run push   # only if schema changed
-pm2 restart solarnexus-api --update-env
+# Re-reads ecosystem.config.cjs (and the latest .env) on every deploy:
+pm2 startOrReload ecosystem.config.cjs --update-env
 ```
 
 You can drop this in a script `~/deploy.sh` and run `bash ~/deploy.sh`
